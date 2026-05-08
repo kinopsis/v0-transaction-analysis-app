@@ -67,6 +67,7 @@ export function TransactionTable({
               <TableHead>Tarjeta</TableHead>
               <TableHead className="text-right">Valor</TableHead>
               <TableHead>Datáfono</TableHead>
+              <TableHead>Nombre Comercio</TableHead>
               <TableHead>Subtipo</TableHead>
               <TableHead>Centro</TableHead>
               <TableHead>Estado</TableHead>
@@ -87,6 +88,9 @@ export function TransactionTable({
                 </TableCell>
                 <TableCell className="font-mono text-xs">
                   {t.nroDispositivo}
+                </TableCell>
+                <TableCell className="max-w-40 truncate text-sm" title={t.marca || ""}>
+                  {t.marca || "-"}
                 </TableCell>
                 <TableCell className="text-sm">{t.subtipo}</TableCell>
                 <TableCell className="text-sm">{t.nombreCentro}</TableCell>

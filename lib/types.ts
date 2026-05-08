@@ -9,6 +9,9 @@ export interface CentroComercial {
 // Datáfono mapping
 export interface Datafono {
   nroDispositivo: string;
+  /** Nombre del comercio/establecimiento (ej: "EXITO UNICENTRO") */
+  nombreComercio?: string;
+  /** Marca del terminal físico (ej: "Verifone") — campo libre */
   marca?: string;
   centroId: string;
 }

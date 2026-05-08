@@ -53,18 +53,72 @@ export function validateTarjeta(tarjeta: string): boolean {
   return cleaned.length >= 12;
 }
 
+// Normalize a string for flexible centro name matching
+function normalizeCentroName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // strip accents
+    .replace(/[^a-z0-9\s]/g, "")
+    .trim();
+}
+
+// Build alias map for known name variations in the CSV
+const CENTRO_ALIASES: Record<string, string[]> = {
+  tesoro: ["el tesoro", "tesoro"],
+  sandiego: ["sandiego", "san diego"],
+  "puerta": ["puerta del norte", "puerta norte", "puerta del norte"],
+  unicentro: ["unicentro"],
+  oviedo: ["oviedo"],
+  fundadores: ["fundadores"],
+  "camino-real": ["camino real"],
+  molinos: ["molinos"],
+  florida: ["florida"],
+  asocentros: ["asocentros"],
+};
+
+// Resolve a centro name from a CSV value to a CentroComercial
+export function resolveCentro(
+  csvName: string,
+  centros: CentroComercial[]
+): CentroComercial | undefined {
+  const normalized = normalizeCentroName(csvName);
+
+  // 1. Try exact match on normalized nombre
+  const exact = centros.find(
+    (c) => normalizeCentroName(c.nombre) === normalized
+  );
+  if (exact) return exact;
+
+  // 2. Try alias map
+  for (const [centroId, aliases] of Object.entries(CENTRO_ALIASES)) {
+    if (aliases.some((alias) => normalizeCentroName(alias) === normalized)) {
+      const found = centros.find((c) => c.id === centroId);
+      if (found) return found;
+    }
+  }
+
+  // 3. Partial containment fallback
+  return centros.find(
+    (c) =>
+      normalizeCentroName(c.nombre).includes(normalized) ||
+      normalized.includes(normalizeCentroName(c.nombre))
+  );
+}
+
 // Find centro by datáfono
 export function findCentroByDatafono(
   nroDispositivo: string,
   datafonos: Datafono[],
   centros: CentroComercial[]
-): { centroId: string; nombreCentro: string; marca?: string } {
+): { centroId: string; nombreCentro: string; nombreComercio?: string; marca?: string } {
   const datafono = datafonos.find((d) => d.nroDispositivo === nroDispositivo);
   if (datafono) {
     const centro = centros.find((c) => c.id === datafono.centroId);
     return {
       centroId: datafono.centroId,
       nombreCentro: centro?.nombre || "Desconocido",
+      nombreComercio: datafono.nombreComercio,
       marca: datafono.marca,
     };
   }
@@ -180,8 +234,8 @@ export async function importTransacciones(
       : parseFloat(String(valorRaw).replace(/[^0-9.-]/g, "")) || 0;
     
     // Find centro
-    const { centroId, nombreCentro, marca } = findCentroByDatafono(
-      nroDispositivo,
+    const { centroId, nombreCentro, nombreComercio, marca } = findCentroByDatafono(
+      nroDispositivo.replace(/[^0-9]/g, ""),
       datafonos,
       centros
     );
@@ -198,7 +252,7 @@ export async function importTransacciones(
       comprobante,
       centroId,
       archivoId,
-      marca,
+      marca: nombreComercio || marca,
       nombreCentro,
       mes: dateResult.mes,
       anio: dateResult.anio,
@@ -249,6 +303,8 @@ export async function importRemanentes(
 }
 
 // Import datáfonos from CSV
+// Expected columns: "Datáfono" | "Marca" | "Centro Comercial"
+// Also accepts legacy headers: "Nro dispositivo", "Centro comercial", etc.
 export async function importDatafonos(
   file: File,
   centros: CentroComercial[]
@@ -256,49 +312,71 @@ export async function importDatafonos(
   const rows = await parseFile(file);
   const datafonos: Datafono[] = [];
   const errors: ImportError[] = [];
-  
+  const seen = new Set<string>();
+
   rows.forEach((row, index) => {
     const fila = index + 2;
-    
+
+    // Support both the new format (Datáfono / Marca / Centro Comercial)
+    // and the legacy format (Nro dispositivo / Centro comercial)
     const nroDispositivo = String(
-      row["Nro dispositivo"] || row["nro_dispositivo"] || row["NroDispositivo"] || ""
+      row["Datáfono"] ??
+      row["Datafono"] ??
+      row["Nro dispositivo"] ??
+      row["nro_dispositivo"] ??
+      row["NroDispositivo"] ??
+      ""
     ).trim();
-    const marca = String(row["Marca"] || row["marca"] || "").trim();
+
+    // "Marca" in the new CSV is actually the commerce/store name
+    const nombreComercio = String(
+      row["Marca"] ?? row["marca"] ?? row["Nombre comercio"] ?? row["NombreComercio"] ?? ""
+    ).trim();
+
     const centroNombre = String(
-      row["Centro comercial"] || row["centro_comercial"] || row["CentroComercial"] || ""
+      row["Centro Comercial"] ??
+      row["Centro comercial"] ??
+      row["centro_comercial"] ??
+      row["CentroComercial"] ??
+      ""
     ).trim();
-    
-    if (!validateDatafono(nroDispositivo)) {
+
+    // Validate datáfono number (must be 6–10 digits to handle variations)
+    const cleanedNro = nroDispositivo.replace(/[^0-9]/g, "");
+    if (cleanedNro.length < 6 || cleanedNro.length > 10) {
       errors.push({
         fila,
-        campo: "Nro dispositivo",
+        campo: "Datáfono",
         valor: nroDispositivo,
-        mensaje: "El número de dispositivo debe tener 8 dígitos",
+        mensaje: "El número de datáfono debe tener entre 6 y 10 dígitos",
       });
       return;
     }
-    
-    const centro = centros.find(
-      (c) => c.nombre.toLowerCase() === centroNombre.toLowerCase()
-    );
-    
+
+    // Skip duplicates within the same import
+    if (seen.has(cleanedNro)) return;
+    seen.add(cleanedNro);
+
+    // Resolve centro using flexible matching
+    const centro = resolveCentro(centroNombre, centros);
+
     if (!centro) {
       errors.push({
         fila,
-        campo: "Centro comercial",
+        campo: "Centro Comercial",
         valor: centroNombre,
-        mensaje: "Centro comercial no encontrado",
+        mensaje: `Centro comercial "${centroNombre}" no encontrado`,
       });
       return;
     }
-    
+
     datafonos.push({
-      nroDispositivo: nroDispositivo.replace(/[^0-9]/g, ""),
-      marca: marca || undefined,
+      nroDispositivo: cleanedNro,
+      nombreComercio: nombreComercio || undefined,
       centroId: centro.id,
     });
   });
-  
+
   return { datafonos, errors };
 }
 

@@ -10,13 +10,13 @@ export function exportTransaccionesExcel(transacciones: Transaccion[], filename:
     "Fecha": formatDate(t.fecha),
     "Tarjeta": t.tarjeta,
     "Valor": t.valor,
-    "Nro Dispositivo": t.nroDispositivo,
+    "Datáfono": t.nroDispositivo,
+    "Nombre Comercio": t.marca || "",
     "Subtipo": t.subtipo,
     "Cod Establecimiento": t.codEstablecimiento,
     "Estado": t.estado,
     "Comprobante": t.comprobante,
     "Centro Comercial": t.nombreCentro,
-    "Marca": t.marca || "",
   }));
   
   const ws = XLSX.utils.json_to_sheet(data);
@@ -189,12 +189,12 @@ export function exportRemanentesPDF(remanentes: Remanente[], filename: string) {
   doc.save(`${filename}.pdf`);
 }
 
-// Export datáfonos to CSV
+// Export datáfonos to CSV — uses the same column structure as the import format
 export function exportDatafonosCSV(datafonos: Datafono[], centros: CentroComercial[]) {
   const data = datafonos.map((d) => ({
-    "Nro dispositivo": d.nroDispositivo,
-    "Marca": d.marca || "",
-    "Centro comercial": centros.find((c) => c.id === d.centroId)?.nombre || "",
+    "Datáfono": d.nroDispositivo,
+    "Marca": d.nombreComercio || d.marca || "",
+    "Centro Comercial": centros.find((c) => c.id === d.centroId)?.nombre || "",
   }));
   
   const ws = XLSX.utils.json_to_sheet(data);

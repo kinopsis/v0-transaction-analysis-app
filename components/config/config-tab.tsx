@@ -47,6 +47,7 @@ export function ConfigTab() {
   // New datáfono form state
   const [newDatafono, setNewDatafono] = useState<Partial<Datafono>>({
     nroDispositivo: "",
+    nombreComercio: "",
     marca: "",
     centroId: "",
   });
@@ -81,13 +82,14 @@ export function ConfigTab() {
       payload: [
         {
           nroDispositivo: newDatafono.nroDispositivo,
+          nombreComercio: newDatafono.nombreComercio || undefined,
           marca: newDatafono.marca || undefined,
           centroId: newDatafono.centroId,
         },
       ],
     });
 
-    setNewDatafono({ nroDispositivo: "", marca: "", centroId: "" });
+    setNewDatafono({ nroDispositivo: "", nombreComercio: "", marca: "", centroId: "" });
     toast.success("Datáfono agregado correctamente");
   };
 
@@ -180,9 +182,9 @@ export function ConfigTab() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-end gap-4">
-                  <div className="flex-1">
+                  <div className="w-36 shrink-0">
                     <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                      N° Dispositivo (8 dígitos) *
+                      N° Datáfono *
                     </label>
                     <Input
                       placeholder="12345678"
@@ -190,21 +192,21 @@ export function ConfigTab() {
                       onChange={(e) =>
                         setNewDatafono({
                           ...newDatafono,
-                          nroDispositivo: e.target.value.replace(/\D/g, "").slice(0, 8),
+                          nroDispositivo: e.target.value.replace(/\D/g, "").slice(0, 10),
                         })
                       }
                       className="bg-secondary font-mono"
                     />
                   </div>
-                  <div className="w-40">
+                  <div className="flex-1">
                     <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                      Marca
+                      Nombre Comercio
                     </label>
                     <Input
-                      placeholder="Ej: Verifone"
-                      value={newDatafono.marca || ""}
+                      placeholder="Ej: EXITO UNICENTRO"
+                      value={newDatafono.nombreComercio || ""}
                       onChange={(e) =>
-                        setNewDatafono({ ...newDatafono, marca: e.target.value })
+                        setNewDatafono({ ...newDatafono, nombreComercio: e.target.value })
                       }
                       className="bg-secondary"
                     />
@@ -283,8 +285,8 @@ export function ConfigTab() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>N° Dispositivo</TableHead>
-                          <TableHead>Marca</TableHead>
+                          <TableHead>N° Datáfono</TableHead>
+                          <TableHead>Nombre Comercio</TableHead>
                           <TableHead>Centro Comercial</TableHead>
                           <TableHead className="w-20" />
                         </TableRow>
@@ -295,7 +297,7 @@ export function ConfigTab() {
                             <TableCell className="font-mono">
                               {d.nroDispositivo}
                             </TableCell>
-                            <TableCell>{d.marca || "-"}</TableCell>
+                            <TableCell>{d.nombreComercio || d.marca || "-"}</TableCell>
                             <TableCell>
                               {state.centros.find((c) => c.id === d.centroId)
                                 ?.nombre || "Desconocido"}
