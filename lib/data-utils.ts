@@ -106,13 +106,13 @@ export function resolveCentro(
   );
 }
 
-// Find centro by datáfono
-export function findCentroByDatafono(
-  nroDispositivo: string,
+// Find centro by código de establecimiento (primary key for datafonos)
+export function findCentroByCodEstablecimiento(
+  codEstablecimiento: string,
   datafonos: Datafono[],
   centros: CentroComercial[]
 ): { centroId: string; nombreCentro: string; nombreComercio?: string; marca?: string } {
-  const datafono = datafonos.find((d) => d.nroDispositivo === nroDispositivo);
+  const datafono = datafonos.find((d) => d.codEstablecimiento === codEstablecimiento);
   if (datafono) {
     const centro = centros.find((c) => c.id === datafono.centroId);
     return {
@@ -233,9 +233,9 @@ export async function importTransacciones(
       ? valorRaw 
       : parseFloat(String(valorRaw).replace(/[^0-9.-]/g, "")) || 0;
     
-    // Find centro
-    const { centroId, nombreCentro, nombreComercio, marca } = findCentroByDatafono(
-      nroDispositivo.replace(/[^0-9]/g, ""),
+    // Find centro by codEstablecimiento (primary key)
+    const { centroId, nombreCentro, nombreComercio, marca } = findCentroByCodEstablecimiento(
+      codEstablecimiento,
       datafonos,
       centros
     );
@@ -303,8 +303,8 @@ export async function importRemanentes(
 }
 
 // Import datáfonos from CSV
-// Expected columns: "Datáfono" | "Marca" | "Centro Comercial"
-// Also accepts legacy headers: "Nro dispositivo", "Centro comercial", etc.
+// Expected columns: "Código establecimiento" | "Marca" | "Centro Comercial"
+// Also accepts: "Datáfono", "Cod establecimiento", etc.
 export async function importDatafonos(
   file: File,
   centros: CentroComercial[]
@@ -317,18 +317,19 @@ export async function importDatafonos(
   rows.forEach((row, index) => {
     const fila = index + 2;
 
-    // Support both the new format (Datáfono / Marca / Centro Comercial)
-    // and the legacy format (Nro dispositivo / Centro comercial)
-    const nroDispositivo = String(
+    // Primary identifier: Código de establecimiento
+    const codEstablecimiento = String(
+      row["Código establecimiento"] ??
+      row["Codigo establecimiento"] ??
+      row["Cod establecimiento"] ??
+      row["cod_establecimiento"] ??
+      row["CodEstablecimiento"] ??
       row["Datáfono"] ??
       row["Datafono"] ??
-      row["Nro dispositivo"] ??
-      row["nro_dispositivo"] ??
-      row["NroDispositivo"] ??
       ""
     ).trim();
 
-    // "Marca" in the new CSV is actually the commerce/store name
+    // "Marca" in the CSV is actually the commerce/store name
     const nombreComercio = String(
       row["Marca"] ?? row["marca"] ?? row["Nombre comercio"] ?? row["NombreComercio"] ?? ""
     ).trim();
@@ -341,21 +342,20 @@ export async function importDatafonos(
       ""
     ).trim();
 
-    // Validate datáfono number (must be 6–10 digits to handle variations)
-    const cleanedNro = nroDispositivo.replace(/[^0-9]/g, "");
-    if (cleanedNro.length < 6 || cleanedNro.length > 10) {
+    // Validate código establecimiento (must not be empty)
+    if (!codEstablecimiento || codEstablecimiento.length < 1) {
       errors.push({
         fila,
-        campo: "Datáfono",
-        valor: nroDispositivo,
-        mensaje: "El número de datáfono debe tener entre 6 y 10 dígitos",
+        campo: "Código establecimiento",
+        valor: codEstablecimiento,
+        mensaje: "El código de establecimiento es requerido",
       });
       return;
     }
 
     // Skip duplicates within the same import
-    if (seen.has(cleanedNro)) return;
-    seen.add(cleanedNro);
+    if (seen.has(codEstablecimiento)) return;
+    seen.add(codEstablecimiento);
 
     // Resolve centro using flexible matching
     const centro = resolveCentro(centroNombre, centros);
@@ -371,7 +371,7 @@ export async function importDatafonos(
     }
 
     datafonos.push({
-      nroDispositivo: cleanedNro,
+      codEstablecimiento,
       nombreComercio: nombreComercio || undefined,
       centroId: centro.id,
     });

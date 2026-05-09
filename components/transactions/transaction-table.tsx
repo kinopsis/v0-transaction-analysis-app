@@ -66,7 +66,7 @@ export function TransactionTable({
               <TableHead className="w-28">Fecha</TableHead>
               <TableHead>Tarjeta</TableHead>
               <TableHead className="text-right">Valor</TableHead>
-              <TableHead>Datáfono</TableHead>
+              <TableHead>Cód. Establecimiento</TableHead>
               <TableHead>Nombre Comercio</TableHead>
               <TableHead>Subtipo</TableHead>
               <TableHead>Centro</TableHead>

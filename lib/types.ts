@@ -6,9 +6,10 @@ export interface CentroComercial {
   cuotaFija: number;
 }
 
-// Datáfono mapping
+// Datáfono mapping - uses codEstablecimiento as primary identifier
 export interface Datafono {
-  nroDispositivo: string;
+  /** Código de establecimiento - identificador principal para sincronización */
+  codEstablecimiento: string;
   /** Nombre del comercio/establecimiento (ej: "EXITO UNICENTRO") */
   nombreComercio?: string;
   /** Marca del terminal físico (ej: "Verifone") — campo libre */
