@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, Upload, Download, Save, History } from "lucide-react";
+import { Plus, Trash2, Upload, Download, Save, History, Search, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/header";
 import { useAppStore } from "@/lib/store";
@@ -44,6 +44,10 @@ export function ConfigTab() {
   const { state, dispatch } = useAppStore();
   const [activeTab, setActiveTab] = useState("datafonos");
 
+  // Search filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchCentro, setSearchCentro] = useState<string>("all");
+
   // New datáfono form state
   const [newDatafono, setNewDatafono] = useState<Partial<Datafono>>({
     nroDispositivo: "",
@@ -55,6 +59,20 @@ export function ConfigTab() {
   // Editable cuota fija state
   const [editingCuotaFija, setEditingCuotaFija] = useState<string | null>(null);
   const [cuotaFijaValue, setCuotaFijaValue] = useState("");
+
+  // Filtered datáfonos based on search
+  const filteredDatafonos = state.datafonos.filter((d) => {
+    const matchesSearch =
+      searchQuery === "" ||
+      d.nroDispositivo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (d.nombreComercio || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (d.marca || "").toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesCentro =
+      searchCentro === "all" || d.centroId === searchCentro;
+
+    return matchesSearch && matchesCentro;
+  });
 
   const handleAddDatafono = () => {
     if (!newDatafono.nroDispositivo || !newDatafono.centroId) {
@@ -109,11 +127,20 @@ export function ConfigTab() {
 
       if (datafonos.length > 0) {
         dispatch({ type: "ADD_DATAFONOS", payload: datafonos });
+        
+        // Auto-sync transactions with new datafono data
+        if (state.transacciones.length > 0) {
+          setTimeout(() => {
+            // Use a small delay to ensure state is updated
+            toast.info("Sincronizando transacciones...", { duration: 1500 });
+          }, 100);
+        }
+        
         toast.success(`${datafonos.length} datáfonos importados correctamente`, {
           description:
             errors.length > 0
               ? `${errors.length} filas con errores fueron omitidas`
-              : undefined,
+              : "Use 'Sincronizar Transacciones' para actualizar datos existentes",
         });
       } else {
         toast.error("No se pudieron importar datáfonos", {
@@ -156,6 +183,53 @@ export function ConfigTab() {
   const handleDeleteArchivo = (archivoId: string) => {
     dispatch({ type: "DELETE_ARCHIVO", payload: archivoId });
     toast.success("Archivo y sus datos eliminados");
+  };
+
+  // Sync transactions with updated datafono information
+  const handleSyncTransactions = () => {
+    if (state.transacciones.length === 0) {
+      toast.info("No hay transacciones para sincronizar");
+      return;
+    }
+
+    let updatedCount = 0;
+    const updatedTransacciones = state.transacciones.map((t) => {
+      const datafono = state.datafonos.find(
+        (d) => d.nroDispositivo === t.nroDispositivo
+      );
+      if (datafono) {
+        const centro = state.centros.find((c) => c.id === datafono.centroId);
+        const newMarca = datafono.nombreComercio || datafono.marca;
+        const newCentroId = datafono.centroId;
+        const newNombreCentro = centro?.nombre || "Desconocido";
+
+        // Check if there are changes
+        if (
+          t.marca !== newMarca ||
+          t.centroId !== newCentroId ||
+          t.nombreCentro !== newNombreCentro
+        ) {
+          updatedCount++;
+          return {
+            ...t,
+            marca: newMarca,
+            centroId: newCentroId,
+            nombreCentro: newNombreCentro,
+          };
+        }
+      }
+      return t;
+    });
+
+    if (updatedCount > 0) {
+      dispatch({ type: "CLEAR_TRANSACCIONES" });
+      dispatch({ type: "ADD_TRANSACCIONES", payload: updatedTransacciones });
+      toast.success(`${updatedCount} transacciones sincronizadas`, {
+        description: "Los datos de comercio y centro han sido actualizados",
+      });
+    } else {
+      toast.info("Todas las transacciones ya están sincronizadas");
+    }
   };
 
   return (
@@ -241,8 +315,8 @@ export function ConfigTab() {
               </CardContent>
             </Card>
 
-            {/* Import/Export */}
-            <div className="flex gap-2">
+            {/* Import/Export/Sync */}
+            <div className="flex flex-wrap items-center gap-2">
               <label>
                 <input
                   type="file"
@@ -265,25 +339,86 @@ export function ConfigTab() {
                 <Download className="mr-2 h-4 w-4" />
                 Exportar CSV
               </Button>
+              <div className="ml-auto">
+                <Button
+                  variant="secondary"
+                  onClick={handleSyncTransactions}
+                  disabled={state.datafonos.length === 0 || state.transacciones.length === 0}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Sincronizar Transacciones
+                </Button>
+              </div>
             </div>
 
             {/* Datáfonos table */}
             <Card className="border-border bg-card">
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                 <CardTitle className="text-base">
-                  Datáfonos Registrados ({state.datafonos.length})
+                  Datáfonos Registrados ({filteredDatafonos.length}
+                  {filteredDatafonos.length !== state.datafonos.length && (
+                    <span className="text-muted-foreground"> de {state.datafonos.length}</span>
+                  )}
+                  )
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                {/* Search filters */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar por datáfono o comercio..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="bg-secondary pl-9"
+                    />
+                  </div>
+                  <div className="w-48">
+                    <Select
+                      value={searchCentro}
+                      onValueChange={setSearchCentro}
+                    >
+                      <SelectTrigger className="bg-secondary">
+                        <SelectValue placeholder="Filtrar por centro" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos los centros</SelectItem>
+                        {state.centros.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {(searchQuery || searchCentro !== "all") && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSearchCentro("all");
+                      }}
+                    >
+                      Limpiar filtros
+                    </Button>
+                  )}
+                </div>
+
                 {state.datafonos.length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">
                     No hay datáfonos registrados. Agrega uno o importa desde un
                     archivo CSV.
                   </p>
+                ) : filteredDatafonos.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    No se encontraron datáfonos con los filtros aplicados.
+                  </p>
                 ) : (
-                  <div className="max-h-96 overflow-auto">
+                  <div className="max-h-[400px] overflow-auto rounded-md border border-border">
                     <Table>
-                      <TableHeader>
+                      <TableHeader className="sticky top-0 bg-card">
                         <TableRow>
                           <TableHead>N° Datáfono</TableHead>
                           <TableHead>Nombre Comercio</TableHead>
@@ -292,12 +427,14 @@ export function ConfigTab() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {state.datafonos.map((d) => (
+                        {filteredDatafonos.map((d) => (
                           <TableRow key={d.nroDispositivo}>
                             <TableCell className="font-mono">
                               {d.nroDispositivo}
                             </TableCell>
-                            <TableCell>{d.nombreComercio || d.marca || "-"}</TableCell>
+                            <TableCell className="max-w-[200px] truncate" title={d.nombreComercio || d.marca || ""}>
+                              {d.nombreComercio || d.marca || "-"}
+                            </TableCell>
                             <TableCell>
                               {state.centros.find((c) => c.id === d.centroId)
                                 ?.nombre || "Desconocido"}
