@@ -192,7 +192,7 @@ export function exportRemanentesPDF(remanentes: Remanente[], filename: string) {
 // Export datáfonos to CSV — uses the same column structure as the import format
 export function exportDatafonosCSV(datafonos: Datafono[], centros: CentroComercial[]) {
   const data = datafonos.map((d) => ({
-    "Datáfono": d.nroDispositivo,
+    "Datáfono": d.codEstablecimiento,
     "Marca": d.nombreComercio || d.marca || "",
     "Centro Comercial": centros.find((c) => c.id === d.centroId)?.nombre || "",
   }));
@@ -217,7 +217,7 @@ export function exportDatafonosUnicosExcel(
   
   transacciones.forEach((t) => {
     const existing = datafonosPorCentro.get(t.centroId) || new Set();
-    existing.add(t.nroDispositivo);
+    existing.add(t.codEstablecimiento);
     datafonosPorCentro.set(t.centroId, existing);
   });
   
@@ -257,7 +257,7 @@ export function exportDatafonosUnicosPDF(
   
   transacciones.forEach((t) => {
     const existing = datafonosPorCentro.get(t.centroId) || new Set();
-    existing.add(t.nroDispositivo);
+    existing.add(t.codEstablecimiento);
     datafonosPorCentro.set(t.centroId, existing);
   });
   

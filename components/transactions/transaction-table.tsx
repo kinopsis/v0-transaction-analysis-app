@@ -87,7 +87,7 @@ export function TransactionTable({
                   {formatCurrency(t.valor)}
                 </TableCell>
                 <TableCell className="font-mono text-xs">
-                  {t.nroDispositivo}
+                  {t.codEstablecimiento}
                 </TableCell>
                 <TableCell className="max-w-40 truncate text-sm" title={t.marca || ""}>
                   {t.marca || "-"}

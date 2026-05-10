@@ -38,6 +38,7 @@ export function TransactionFilters({
       fechaFin: undefined,
       subtipo: undefined,
       nroDispositivo: undefined,
+      codEstablecimiento: undefined,
       tarjeta: undefined,
       mes: undefined,
       anio: undefined,
@@ -50,6 +51,7 @@ export function TransactionFilters({
     filters.fechaFin ||
     filters.subtipo ||
     filters.nroDispositivo ||
+    filters.codEstablecimiento ||
     filters.tarjeta ||
     filters.mes ||
     filters.anio;
@@ -167,17 +169,17 @@ export function TransactionFilters({
           </Select>
         </div>
 
-        {/* Datáfono */}
+        {/* Código Establecimiento */}
         <div>
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-            N° Datáfono
+            Cód. Establecimiento
           </label>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar..."
-              value={filters.nroDispositivo || ""}
-              onChange={(e) => updateFilter("nroDispositivo", e.target.value)}
+              value={filters.codEstablecimiento || ""}
+              onChange={(e) => updateFilter("codEstablecimiento", e.target.value)}
               className="bg-secondary pl-8"
             />
           </div>

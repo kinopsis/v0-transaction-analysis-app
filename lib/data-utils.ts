@@ -401,6 +401,9 @@ export function filterTransacciones(
     if (filters.nroDispositivo && !t.nroDispositivo.includes(filters.nroDispositivo)) {
       return false;
     }
+    if (filters.codEstablecimiento && !t.codEstablecimiento.includes(filters.codEstablecimiento)) {
+      return false;
+    }
     if (filters.tarjeta && !t.tarjeta.includes(filters.tarjeta)) {
       return false;
     }
@@ -421,7 +424,7 @@ export function calculateKPIs(transacciones: Transaccion[]): KPIData {
   const ticketPromedio = numTransacciones > 0 ? volumenVentas / numTransacciones : 0;
   const comisionAcumulada = volumenVentas * COMMISSION_RATE;
   const tarjetasUnicas = new Set(transacciones.map((t) => t.tarjeta)).size;
-  const datafonosUnicos = new Set(transacciones.map((t) => t.nroDispositivo)).size;
+  const datafonosUnicos = new Set(transacciones.map((t) => t.codEstablecimiento)).size;
   
   return {
     volumenVentas,

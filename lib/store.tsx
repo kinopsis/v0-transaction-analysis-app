@@ -62,7 +62,7 @@ function reducer(state: AppState, action: Action): AppState {
         datafonos: [
           ...state.datafonos.filter(
             (d) =>
-              !action.payload.some((p) => p.nroDispositivo === d.nroDispositivo)
+              !action.payload.some((p) => p.codEstablecimiento === d.codEstablecimiento)
           ),
           ...action.payload,
         ],
@@ -71,14 +71,14 @@ function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         datafonos: state.datafonos.map((d) =>
-          d.nroDispositivo === action.payload.nroDispositivo ? action.payload : d
+          d.codEstablecimiento === action.payload.codEstablecimiento ? action.payload : d
         ),
       };
     case "DELETE_DATAFONO":
       return {
         ...state,
         datafonos: state.datafonos.filter(
-          (d) => d.nroDispositivo !== action.payload
+          (d) => d.codEstablecimiento !== action.payload
         ),
       };
     case "SET_DATAFONOS":

@@ -111,6 +111,7 @@ export interface FilterState {
   fechaFin?: string;
   subtipo?: string;
   nroDispositivo?: string;
+  codEstablecimiento?: string;
   tarjeta?: string;
   mes?: number;
   anio?: number;
