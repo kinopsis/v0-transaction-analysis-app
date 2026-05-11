@@ -50,14 +50,19 @@ export function DashboardTab() {
   const handleImport = async (file: File) => {
     try {
       const archivoId = generateId();
-      const { transacciones, errors, duplicates, unregisteredCodes } =
-        await importTransacciones(
-          file,
-          state.datafonos,
-          state.centros,
-          archivoId,
-          state.transacciones
-        );
+      const {
+        transacciones,
+        errors,
+        duplicates,
+        unregisteredCodes,
+        rejectedUnregistered,
+      } = await importTransacciones(
+        file,
+        state.datafonos,
+        state.centros,
+        archivoId,
+        state.transacciones
+      );
 
       if (transacciones.length > 0) {
         dispatch({ type: "ADD_TRANSACCIONES", payload: transacciones });
@@ -75,10 +80,12 @@ export function DashboardTab() {
         });
 
         const descParts: string[] = [];
-        if (errors.length > 0)
-          descParts.push(`${errors.length} filas con errores omitidas`);
         if (duplicates > 0)
           descParts.push(`${duplicates} duplicados ignorados`);
+        if (rejectedUnregistered > 0)
+          descParts.push(
+            `${rejectedUnregistered} filas rechazadas por datáfono no registrado`
+          );
 
         toast.success(
           `${transacciones.length} transacciones importadas correctamente`,
@@ -96,25 +103,49 @@ export function DashboardTab() {
           });
         }
 
-        // Warn about códigos de establecimiento not registered in Configuracion
+        // Error: códigos de establecimiento del CSV no coinciden con ningún datáfono registrado.
+        // Regla de integridad: el "Código establecimiento" (8 dígitos) de la columna CSV
+        // debe corresponder exactamente al número de datáfono registrado en Configuración.
+        // Ambos son el mismo identificador de 8 dígitos numéricos.
         if (unregisteredCodes.length > 0) {
-          const sample = unregisteredCodes.slice(0, 3).join(", ");
+          const sample = unregisteredCodes.slice(0, 5).join(", ");
           const extra =
-            unregisteredCodes.length > 3
-              ? ` y ${unregisteredCodes.length - 3} más`
+            unregisteredCodes.length > 5
+              ? ` y ${unregisteredCodes.length - 5} más`
               : "";
-          toast.warning(
-            `${unregisteredCodes.length} código(s) de establecimiento sin datáfono registrado`,
+          toast.error(
+            `${rejectedUnregistered} fila(s) rechazadas — datáfono no registrado`,
             {
-              description: `Códigos no encontrados en Configuración → Datáfonos: ${sample}${extra}. Registra estos datáfonos para sincronizar el centro comercial correctamente.`,
-              duration: 8000,
+              description: `Los códigos de establecimiento: ${sample}${extra} no coinciden con ningún datáfono en Configuración → Datáfonos. El número de datáfono en la configuración debe ser exactamente igual al "Código establecimiento" del archivo (8 dígitos numéricos).`,
+              duration: 10000,
             }
           );
         }
-      } else if (duplicates > 0) {
-        toast.warning("Todas las transacciones del archivo ya están registradas", {
-          description: `${duplicates} duplicados detectados por Cod. Autorización + Fecha`,
-        });
+      } else if (
+        rejectedUnregistered > 0 &&
+        transacciones.length === 0 &&
+        duplicates === 0
+      ) {
+        // All rows were rejected due to unregistered datafono codes
+        const sample = unregisteredCodes.slice(0, 5).join(", ");
+        const extra =
+          unregisteredCodes.length > 5
+            ? ` y ${unregisteredCodes.length - 5} más`
+            : "";
+        toast.error(
+          "No se importaron transacciones — todos los datáfonos son desconocidos",
+          {
+            description: `Ningún "Código establecimiento" del archivo coincide con un datáfono registrado en Configuración. Registra los datáfonos con los códigos: ${sample}${extra} (exactamente 8 dígitos, igual al "Código establecimiento" del CSV).`,
+            duration: 12000,
+          }
+        );
+      } else if (duplicates > 0 && transacciones.length === 0) {
+        toast.warning(
+          "Todas las transacciones del archivo ya están registradas",
+          {
+            description: `${duplicates} duplicados detectados por Cod. Autorización + Fecha`,
+          }
+        );
       } else {
         toast.error("No se pudieron importar transacciones", {
           description:

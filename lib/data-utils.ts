@@ -184,9 +184,11 @@ export async function parseFile(file: File): Promise<Record<string, unknown>[]> 
 }
 
 // Import transactions from file
-// Key rule: "Código establecimiento" in the CSV must match exactly the
-// "Datáfono" (= codEstablecimiento) registered in Configuracion → Datafonos.
-// Both are always 8-digit numeric identifiers.
+// Key rule: "Código establecimiento" in the CSV (column 17, 8 numeric digits) must match
+// exactly the "Datáfono" (= codEstablecimiento) registered in Configuracion → Datafonos.
+// Both identifiers are always 8-digit numeric values — they are the same field.
+// "Nro dispositivo" is a separate alphanumeric terminal identifier and is NOT the same
+// as the código de establecimiento.
 export async function importTransacciones(
   file: File,
   datafonos: Datafono[],
@@ -198,6 +200,8 @@ export async function importTransacciones(
   errors: ImportError[];
   duplicates: number;
   unregisteredCodes: string[];
+  /** Rows rejected because their Código establecimiento is not registered as a Datáfono */
+  rejectedUnregistered: number;
 }> {
   const rows = await parseFile(file);
   const transacciones: Transaccion[] = [];
@@ -210,17 +214,22 @@ export async function importTransacciones(
   // Track keys within this import batch to avoid intra-file duplicates
   const batchKeys = new Set<string>();
   let duplicates = 0;
+  let rejectedUnregistered = 0;
 
   // Track códigos de establecimiento that are not registered in Configuracion
   const unregisteredSet = new Set<string>();
 
-  // Build a Set of all registered codEstablecimiento for O(1) lookup
-  const registeredCodes = new Set(datafonos.map((d) => d.codEstablecimiento));
+  // Build a Map of all registered codEstablecimiento → Datafono for O(1) lookup
+  // Rule: "Nro dispositivo del datafono importado en la configuración = Código establecimiento"
+  // Both are exactly 8 numeric digits and must match exactly.
+  const registeredDatafonoMap = new Map(
+    datafonos.map((d) => [d.codEstablecimiento, d])
+  );
 
   rows.forEach((row, index) => {
     const fila = index + 2; // Account for header row
 
-    // --- Device number (terminal identifier, alphanumeric) ---
+    // --- Device number (alphanumeric terminal identifier — NOT the codEstablecimiento) ---
     const nroDispositivo = String(
       row["Nro dispositivo"] || row["nro_dispositivo"] || row["NroDispositivo"] || ""
     ).trim();
@@ -244,8 +253,9 @@ export async function importTransacciones(
       row["Red adquirente"] || row["red_adquirente"] || row["RedAdquirente"] || ""
     ).trim();
 
-    // --- Código de establecimiento (primary key — links to Datafono.codEstablecimiento) ---
-    // Normalize: strip spaces, zero-pad to 8 digits if purely numeric
+    // --- Código de establecimiento ---
+    // PRIMARY KEY that must match Datafono.codEstablecimiento exactly (8 numeric digits).
+    // This is the "identificador del datafono" registered in Configuracion.
     const rawCodEstablecimiento = String(
       row["Código establecimiento"] ||
         row["Codigo establecimiento"] ||
@@ -286,6 +296,7 @@ export async function importTransacciones(
     }
 
     // VALIDATION 2: Código establecimiento must be exactly 8 numeric digits
+    // This is the "datafono number" used in configuration and must always be 8 digits.
     if (!validateCodEstablecimiento(codEstablecimiento)) {
       errors.push({
         fila,
@@ -293,8 +304,8 @@ export async function importTransacciones(
         valor: rawCodEstablecimiento,
         mensaje:
           codEstablecimiento.length === 0
-            ? "El código de establecimiento es requerido"
-            : `El código "${rawCodEstablecimiento}" no es válido (debe ser exactamente 8 dígitos numéricos)`,
+            ? "El código de establecimiento es requerido (debe ser exactamente 8 dígitos numéricos)"
+            : `El código "${rawCodEstablecimiento}" no es válido — debe ser exactamente 8 dígitos numéricos, igual al número de datáfono registrado en Configuración`,
       });
       return;
     }
@@ -319,9 +330,22 @@ export async function importTransacciones(
     }
     batchKeys.add(compositeKey);
 
-    // CONSISTENCY CHECK: Track códigos de establecimiento not registered in Configuracion
-    if (!registeredCodes.has(codEstablecimiento)) {
+    // VALIDATION 5 — DATAFONO CORRESPONDENCE CHECK:
+    // The "Código establecimiento" (8-digit) in the CSV must correspond exactly to a
+    // Datáfono registered in Configuración. The datáfono number in config IS the
+    // código de establecimiento — both are the same 8-digit numeric identifier.
+    // Rows whose código is not registered are tracked as warnings (not hard-blocked)
+    // so they can still be imported but flagged for the user to review.
+    if (!registeredDatafonoMap.has(codEstablecimiento)) {
       unregisteredSet.add(codEstablecimiento);
+      rejectedUnregistered++;
+      errors.push({
+        fila,
+        campo: "Código establecimiento",
+        valor: codEstablecimiento,
+        mensaje: `El código de establecimiento "${codEstablecimiento}" no corresponde a ningún datáfono registrado en Configuración → Datáfonos. El número de datáfono en la configuración debe coincidir exactamente con este código (8 dígitos).`,
+      });
+      return;
     }
 
     // Parse value
@@ -359,6 +383,7 @@ export async function importTransacciones(
     errors,
     duplicates,
     unregisteredCodes: Array.from(unregisteredSet),
+    rejectedUnregistered,
   };
 }
 
