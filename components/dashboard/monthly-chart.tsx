@@ -18,17 +18,22 @@ import { CHART_COLORS } from "@/lib/constants";
 import { formatCurrency, formatNumber } from "@/lib/data-utils";
 
 interface MonthlyChartProps {
-  data: MonthlyData[];
+  dataVolumen: MonthlyData[];
+  dataTransacciones: MonthlyData[];
   centros: CentroComercial[];
   selectedCentroIds: string[];
 }
 
 export function MonthlyChart({
-  data,
+  dataVolumen,
+  dataTransacciones,
   centros,
   selectedCentroIds,
 }: MonthlyChartProps) {
   const [metric, setMetric] = useState<"volumen" | "transacciones">("volumen");
+
+  // Select the appropriate data based on the metric
+  const data = metric === "volumen" ? dataVolumen : dataTransacciones;
 
   const filteredCentros = centros.filter(
     (c) =>
@@ -111,7 +116,9 @@ export function MonthlyChart({
                     borderRadius: "8px",
                     color: "oklch(0.93 0.01 250)",
                   }}
-                  formatter={(value: number) => [formatValue(value), ""]}
+                  labelStyle={{ color: "oklch(0.93 0.01 250)" }}
+                  itemStyle={{ color: "oklch(0.93 0.01 250)" }}
+                  formatter={(value: number, name: string) => [formatValue(value), name]}
                 />
                 <Legend />
                 {filteredCentros.map((centro, index) => (

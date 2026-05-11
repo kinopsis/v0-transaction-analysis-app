@@ -6,6 +6,14 @@ export interface CentroComercial {
   cuotaFija: number;
 }
 
+// Datáfono history entry for tracking changes over time
+export interface DatafonoHistoryEntry {
+  /** Date from which this version is effective (ISO string) */
+  fechaEfectiva: string;
+  /** Nombre del comercio/establecimiento at the time */
+  nombreComercio?: string;
+}
+
 // Datáfono mapping - uses codEstablecimiento as primary identifier
 export interface Datafono {
   /** Código de establecimiento - identificador principal para sincronización */
@@ -15,6 +23,8 @@ export interface Datafono {
   /** Marca del terminal físico (ej: "Verifone") — campo libre */
   marca?: string;
   centroId: string;
+  /** History of changes - each entry is effective from its fechaEfectiva */
+  historial?: DatafonoHistoryEntry[];
 }
 
 // Transaction
