@@ -50,13 +50,14 @@ export function DashboardTab() {
   const handleImport = async (file: File) => {
     try {
       const archivoId = generateId();
-      const { transacciones, errors, duplicates } = await importTransacciones(
-        file,
-        state.datafonos,
-        state.centros,
-        archivoId,
-        state.transacciones
-      );
+      const { transacciones, errors, duplicates, unregisteredCodes } =
+        await importTransacciones(
+          file,
+          state.datafonos,
+          state.centros,
+          archivoId,
+          state.transacciones
+        );
 
       if (transacciones.length > 0) {
         dispatch({ type: "ADD_TRANSACCIONES", payload: transacciones });
@@ -74,18 +75,41 @@ export function DashboardTab() {
         });
 
         const descParts: string[] = [];
-        if (errors.length > 0) descParts.push(`${errors.length} filas con errores omitidas`);
-        if (duplicates > 0) descParts.push(`${duplicates} duplicados ignorados (mismo Cod. Autorización + Fecha)`);
+        if (errors.length > 0)
+          descParts.push(`${errors.length} filas con errores omitidas`);
+        if (duplicates > 0)
+          descParts.push(`${duplicates} duplicados ignorados`);
 
         toast.success(
           `${transacciones.length} transacciones importadas correctamente`,
-          { description: descParts.length > 0 ? descParts.join(" · ") : undefined }
+          {
+            description:
+              descParts.length > 0 ? descParts.join(" · ") : undefined,
+          }
         );
 
+        // Warn about duplicate transactions
         if (duplicates > 0) {
-          toast.warning(`${duplicates} registros duplicados detectados`, {
-            description: "Estos registros ya existen y fueron omitidos automáticamente",
+          toast.warning(`${duplicates} registros duplicados omitidos`, {
+            description:
+              "Transacciones con el mismo Cod. Autorización + Fecha ya existentes",
           });
+        }
+
+        // Warn about códigos de establecimiento not registered in Configuracion
+        if (unregisteredCodes.length > 0) {
+          const sample = unregisteredCodes.slice(0, 3).join(", ");
+          const extra =
+            unregisteredCodes.length > 3
+              ? ` y ${unregisteredCodes.length - 3} más`
+              : "";
+          toast.warning(
+            `${unregisteredCodes.length} código(s) de establecimiento sin datáfono registrado`,
+            {
+              description: `Códigos no encontrados en Configuración → Datáfonos: ${sample}${extra}. Registra estos datáfonos para sincronizar el centro comercial correctamente.`,
+              duration: 8000,
+            }
+          );
         }
       } else if (duplicates > 0) {
         toast.warning("Todas las transacciones del archivo ya están registradas", {

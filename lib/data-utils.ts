@@ -41,10 +41,26 @@ export function parseDate(dateStr: string): { fecha: string; mes: number; anio: 
   return null;
 }
 
-// Validate datáfono number (8 digits)
+// Validate datáfono/device number (alphanumeric, non-empty)
 export function validateDatafono(nro: string): boolean {
-  const cleaned = nro?.toString().replace(/[^0-9]/g, "") || "";
-  return cleaned.length === 8;
+  const cleaned = nro?.toString().trim() || "";
+  return cleaned.length > 0;
+}
+
+// Validate código de establecimiento: must be exactly 8 numeric digits
+export function validateCodEstablecimiento(cod: string): boolean {
+  const cleaned = cod?.toString().replace(/\s/g, "") || "";
+  return /^\d{8}$/.test(cleaned);
+}
+
+// Normalize código de establecimiento to exactly 8 digits (zero-pad if shorter, trim spaces)
+export function normalizeCodEstablecimiento(cod: string): string {
+  const cleaned = cod?.toString().replace(/\s/g, "").replace(/[^0-9]/g, "") || "";
+  // Zero-pad to 8 digits if it's numeric but short (e.g. "1234" → "00001234")
+  if (cleaned.length > 0 && cleaned.length <= 8) {
+    return cleaned.padStart(8, "0");
+  }
+  return cleaned;
 }
 
 // Validate tarjeta number (12 digits)
@@ -168,13 +184,21 @@ export async function parseFile(file: File): Promise<Record<string, unknown>[]> 
 }
 
 // Import transactions from file
+// Key rule: "Código establecimiento" in the CSV must match exactly the
+// "Datáfono" (= codEstablecimiento) registered in Configuracion → Datafonos.
+// Both are always 8-digit numeric identifiers.
 export async function importTransacciones(
   file: File,
   datafonos: Datafono[],
   centros: CentroComercial[],
   archivoId: string,
   existingTransacciones: Transaccion[] = []
-): Promise<{ transacciones: Transaccion[]; errors: ImportError[]; duplicates: number }> {
+): Promise<{
+  transacciones: Transaccion[];
+  errors: ImportError[];
+  duplicates: number;
+  unregisteredCodes: string[];
+}> {
   const rows = await parseFile(file);
   const transacciones: Transaccion[] = [];
   const errors: ImportError[] = [];
@@ -187,51 +211,95 @@ export async function importTransacciones(
   const batchKeys = new Set<string>();
   let duplicates = 0;
 
+  // Track códigos de establecimiento that are not registered in Configuracion
+  const unregisteredSet = new Set<string>();
+
+  // Build a Set of all registered codEstablecimiento for O(1) lookup
+  const registeredCodes = new Set(datafonos.map((d) => d.codEstablecimiento));
+
   rows.forEach((row, index) => {
     const fila = index + 2; // Account for header row
 
-    // Get values with flexible column names
+    // --- Device number (terminal identifier, alphanumeric) ---
     const nroDispositivo = String(
       row["Nro dispositivo"] || row["nro_dispositivo"] || row["NroDispositivo"] || ""
     ).trim();
+
+    // --- Fecha ---
     const fechaRaw = String(
       row["Fecha de autorización"] || row["fecha_autorizacion"] || row["Fecha"] || ""
     ).trim();
+
+    // --- Tarjeta ---
     const tarjeta = String(row["Tarjeta"] || row["tarjeta"] || "").trim();
+
+    // --- Valor ---
     const valorRaw = row["Valor transacción"] || row["Valor"] || row["valor"] || 0;
+
+    // --- Subtipo ---
     const subtipo = String(row["Subtipo"] || row["subtipo"] || "").trim();
+
+    // --- Red adquirente ---
     const redAdquirente = String(
       row["Red adquirente"] || row["red_adquirente"] || row["RedAdquirente"] || ""
     ).trim();
-    const codEstablecimiento = String(
+
+    // --- Código de establecimiento (primary key — links to Datafono.codEstablecimiento) ---
+    // Normalize: strip spaces, zero-pad to 8 digits if purely numeric
+    const rawCodEstablecimiento = String(
       row["Código establecimiento"] ||
-      row["Cod establecimiento"] ||
-      row["cod_establecimiento"] ||
-      row["CodEstablecimiento"] ||
-      ""
+        row["Codigo establecimiento"] ||
+        row["Cod establecimiento"] ||
+        row["cod_establecimiento"] ||
+        row["CodEstablecimiento"] ||
+        ""
     ).trim();
-    const estado = String(row["Descripción estado de cobro de los cargos"] || row["Estado"] || row["estado"] || "").trim();
-    const codAutorizacion = String(
-      row["Cod. Autorización"] ||
-      row["Cod. Autorizacion"] ||
-      row["CodAutorizacion"] ||
-      row["Comprobante"] ||
-      row["comprobante"] ||
-      ""
+    const codEstablecimiento = normalizeCodEstablecimiento(rawCodEstablecimiento);
+
+    // --- Estado ---
+    const estado = String(
+      row["Descripción estado de cobro de los cargos"] ||
+        row["Estado"] ||
+        row["estado"] ||
+        ""
     ).trim();
 
-    // Validate datáfono (device number)
+    // --- Cod. Autorización ---
+    const codAutorizacion = String(
+      row["Cod. Autorización"] ||
+        row["Cod. Autorizacion"] ||
+        row["CodAutorizacion"] ||
+        row["Comprobante"] ||
+        row["comprobante"] ||
+        ""
+    ).trim();
+
+    // VALIDATION 1: Nro dispositivo must be non-empty
     if (!validateDatafono(nroDispositivo)) {
       errors.push({
         fila,
         campo: "Nro dispositivo",
         valor: nroDispositivo,
-        mensaje: "El número de dispositivo debe tener 8 dígitos",
+        mensaje: "El número de dispositivo es requerido",
       });
       return;
     }
 
-    // Parse date
+    // VALIDATION 2: Código establecimiento must be exactly 8 numeric digits
+    if (!validateCodEstablecimiento(codEstablecimiento)) {
+      errors.push({
+        fila,
+        campo: "Código establecimiento",
+        valor: rawCodEstablecimiento,
+        mensaje:
+          codEstablecimiento.length === 0
+            ? "El código de establecimiento es requerido"
+            : `El código "${rawCodEstablecimiento}" no es válido (debe ser exactamente 8 dígitos numéricos)`,
+      });
+      return;
+    }
+
+    // VALIDATION 3: Parse date
     const dateResult = parseDate(fechaRaw);
     if (!dateResult) {
       errors.push({
@@ -243,7 +311,7 @@ export async function importTransacciones(
       return;
     }
 
-    // Check for duplicates using Cod. Autorización + Fecha as composite key
+    // VALIDATION 4: Duplicate check using Cod. Autorización + Fecha as composite key
     const compositeKey = `${codAutorizacion}|${dateResult.fecha}`;
     if (existingKeys.has(compositeKey) || batchKeys.has(compositeKey)) {
       duplicates++;
@@ -251,25 +319,27 @@ export async function importTransacciones(
     }
     batchKeys.add(compositeKey);
 
+    // CONSISTENCY CHECK: Track códigos de establecimiento not registered in Configuracion
+    if (!registeredCodes.has(codEstablecimiento)) {
+      unregisteredSet.add(codEstablecimiento);
+    }
+
     // Parse value
     const valor =
       typeof valorRaw === "number"
         ? valorRaw
         : parseFloat(String(valorRaw).replace(/[^0-9.-]/g, "")) || 0;
 
-    // Find centro by codEstablecimiento (primary key)
-    const { centroId, nombreCentro, nombreComercio, marca } = findCentroByCodEstablecimiento(
-      codEstablecimiento,
-      datafonos,
-      centros
-    );
+    // Find centro by codEstablecimiento (primary key — identical to Datafono.codEstablecimiento)
+    const { centroId, nombreCentro, nombreComercio, marca } =
+      findCentroByCodEstablecimiento(codEstablecimiento, datafonos, centros);
 
     transacciones.push({
       id: generateId(),
       fecha: dateResult.fecha,
       tarjeta: tarjeta.replace(/[^0-9]/g, ""),
       valor,
-      nroDispositivo: nroDispositivo.replace(/[^0-9A-Za-z]/g, ""),
+      nroDispositivo: nroDispositivo.replace(/\s/g, ""),
       subtipo,
       redAdquirente,
       codEstablecimiento,
@@ -284,7 +354,12 @@ export async function importTransacciones(
     });
   });
 
-  return { transacciones, errors, duplicates };
+  return {
+    transacciones,
+    errors,
+    duplicates,
+    unregisteredCodes: Array.from(unregisteredSet),
+  };
 }
 
 // Import remanentes from file
@@ -328,8 +403,8 @@ export async function importRemanentes(
 }
 
 // Import datáfonos from CSV
-// Expected columns: "Código establecimiento" | "Marca" | "Centro Comercial"
-// Also accepts: "Datáfono", "Cod establecimiento", etc.
+// Expected columns: "Datáfono" (= Código establecimiento, 8 digits) | "Marca" | "Centro Comercial"
+// The "Datáfono" column in Workbook1.csv IS the Código de establecimiento (always 8-digit numeric).
 export async function importDatafonos(
   file: File,
   centros: CentroComercial[]
@@ -343,18 +418,22 @@ export async function importDatafonos(
     const fila = index + 2;
 
     // Primary identifier: Código de establecimiento
-    const codEstablecimiento = String(
+    // "Datáfono" column in Workbook1.csv is the 8-digit establishment code
+    const rawCod = String(
+      row["Datáfono"] ??
+      row["Datafono"] ??
       row["Código establecimiento"] ??
       row["Codigo establecimiento"] ??
       row["Cod establecimiento"] ??
       row["cod_establecimiento"] ??
       row["CodEstablecimiento"] ??
-      row["Datáfono"] ??
-      row["Datafono"] ??
       ""
     ).trim();
 
-    // "Marca" in the CSV is actually the commerce/store name
+    // Normalize to 8-digit format
+    const codEstablecimiento = normalizeCodEstablecimiento(rawCod);
+
+    // "Marca" in the CSV is the commerce/store name
     const nombreComercio = String(
       row["Marca"] ?? row["marca"] ?? row["Nombre comercio"] ?? row["NombreComercio"] ?? ""
     ).trim();
@@ -367,22 +446,25 @@ export async function importDatafonos(
       ""
     ).trim();
 
-    // Validate código establecimiento (must not be empty)
-    if (!codEstablecimiento || codEstablecimiento.length < 1) {
+    // Validate: código de establecimiento must be exactly 8 numeric digits
+    if (!validateCodEstablecimiento(codEstablecimiento)) {
       errors.push({
         fila,
-        campo: "Código establecimiento",
-        valor: codEstablecimiento,
-        mensaje: "El código de establecimiento es requerido",
+        campo: "Datáfono / Código establecimiento",
+        valor: rawCod,
+        mensaje:
+          codEstablecimiento.length === 0
+            ? "El código de establecimiento es requerido"
+            : `El código "${rawCod}" no es un identificador válido (debe ser exactamente 8 dígitos numéricos)`,
       });
       return;
     }
 
-    // Skip duplicates within the same import
+    // Skip duplicates within the same import batch
     if (seen.has(codEstablecimiento)) return;
     seen.add(codEstablecimiento);
 
-    // Resolve centro using flexible matching
+    // Resolve centro using flexible name matching
     const centro = resolveCentro(centroNombre, centros);
 
     if (!centro) {
@@ -390,7 +472,7 @@ export async function importDatafonos(
         fila,
         campo: "Centro Comercial",
         valor: centroNombre,
-        mensaje: `Centro comercial "${centroNombre}" no encontrado`,
+        mensaje: `Centro comercial "${centroNombre}" no encontrado en la configuración`,
       });
       return;
     }

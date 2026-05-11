@@ -9,6 +9,7 @@ import {
   calculateComisionReporte,
   formatCurrency,
   formatNumber,
+  formatDate,
 } from "@/lib/data-utils";
 import {
   exportTransaccionesExcel,
@@ -272,26 +273,34 @@ export function ReportsTab() {
                       <TableHead>Fecha</TableHead>
                       <TableHead>Tarjeta</TableHead>
                       <TableHead className="text-right">Valor</TableHead>
-                      <TableHead>Cód. Establecimiento</TableHead>
+                      <TableHead>Cód. Estab.</TableHead>
+                      <TableHead>Red Adq.</TableHead>
                       <TableHead>Centro</TableHead>
+                      <TableHead>Cod. Autoriz.</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredTransacciones.slice(0, 50).map((t) => (
                       <TableRow key={t.id}>
-                        <TableCell className="font-mono text-xs">
-                          {t.fecha}
+                        <TableCell className="whitespace-nowrap font-mono text-xs">
+                          {formatDate(t.fecha)}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {t.tarjeta.slice(0, 4)}****{t.tarjeta.slice(-4)}
+                        <TableCell className="whitespace-nowrap font-mono text-xs">
+                          {t.tarjeta}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="whitespace-nowrap text-right">
                           {formatCurrency(t.valor)}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {t.codEstablecimiento}
+                        <TableCell className="whitespace-nowrap font-mono text-xs">
+                          {t.codEstablecimiento || "-"}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {t.redAdquirente || "-"}
                         </TableCell>
                         <TableCell>{t.nombreCentro}</TableCell>
+                        <TableCell className="whitespace-nowrap font-mono text-xs">
+                          {t.codAutorizacion || "-"}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
