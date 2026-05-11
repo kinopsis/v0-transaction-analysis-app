@@ -106,7 +106,7 @@ export function DashboardTab() {
         if (duplicates > 0) {
           toast.warning(`${duplicates} registros duplicados omitidos`, {
             description:
-              "Transacciones con el mismo Cod. Autorización + Fecha ya existentes",
+              "Transacciones con la misma Fecha + Tarjeta + Cod. Autorización ya existentes",
           });
         }
 
@@ -129,7 +129,7 @@ export function DashboardTab() {
         toast.warning(
           "Todas las transacciones del archivo ya están registradas",
           {
-            description: `${duplicates} duplicados detectados por Cod. Autorización + Fecha`,
+            description: `${duplicates} duplicados detectados por Fecha + Tarjeta + Cod. Autorización`,
           }
         );
       } else {

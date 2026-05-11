@@ -106,10 +106,9 @@ export function TransactionsChart({ transacciones }: TransactionsChartProps) {
                     borderRadius: "8px",
                     color: "oklch(0.93 0.01 250)",
                   }}
-                  formatter={(value: number) => [
-                    formatNumber(value),
-                    <span style={{ color: "oklch(0.93 0.01 250)" }}>Transacciones</span>,
-                  ]}
+                  labelStyle={{ color: "oklch(0.93 0.01 250)" }}
+                  itemStyle={{ color: "oklch(0.93 0.01 250)" }}
+                  formatter={(value: number) => [formatNumber(value), "Transacciones"]}
                   labelFormatter={(label) => `Fecha: ${label}`}
                 />
                 <Bar dataKey="transacciones" radius={[4, 4, 0, 0]}>

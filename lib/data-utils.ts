@@ -289,9 +289,9 @@ export async function importTransacciones(
   const transacciones: Transaccion[] = [];
   const errors: ImportError[] = [];
 
-  // Build composite duplicate key set from existing transactions: "codAutorizacion|fecha"
+  // Build composite duplicate key set from existing transactions: "fecha|tarjeta|codAutorizacion"
   const existingKeys = new Set(
-    existingTransacciones.map((t) => `${t.codAutorizacion}|${t.fecha}`)
+    existingTransacciones.map((t) => `${t.fecha}|${t.tarjeta}|${t.codAutorizacion}`)
   );
   // Track keys within this import batch to avoid intra-file duplicates
   const batchKeys = new Set<string>();
@@ -404,8 +404,8 @@ export async function importTransacciones(
       return;
     }
 
-    // VALIDATION 4: Duplicate check using Cod. Autorización + Fecha as composite key
-    const compositeKey = `${codAutorizacion}|${dateResult.fecha}`;
+    // VALIDATION 4: Duplicate check using Fecha + Tarjeta + Cod. Autorización as composite key
+    const compositeKey = `${dateResult.fecha}|${tarjeta.replace(/[^0-9]/g, "")}|${codAutorizacion}`;
     if (existingKeys.has(compositeKey) || batchKeys.has(compositeKey)) {
       duplicates++;
       return;
