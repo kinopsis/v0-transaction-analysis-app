@@ -59,42 +59,44 @@ export function TransactionTable({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-border bg-card">
-        <Table>
+      <div className="overflow-x-auto rounded-lg border border-border bg-card">
+        <Table className="min-w-[900px]">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="w-28">Fecha</TableHead>
-              <TableHead>Tarjeta</TableHead>
-              <TableHead className="text-right">Valor</TableHead>
-              <TableHead>Cód. Establecimiento</TableHead>
-              <TableHead>Nombre Comercio</TableHead>
-              <TableHead>Red Adquirente</TableHead>
-              <TableHead>Centro</TableHead>
-              <TableHead>Cod. Autorización</TableHead>
+              <TableHead className="w-40">Tarjeta</TableHead>
+              <TableHead className="w-28 text-right">Valor</TableHead>
+              <TableHead className="w-28">Cód. Estab.</TableHead>
+              <TableHead className="min-w-32">Nombre Comercio</TableHead>
+              <TableHead className="w-20">Red Adq.</TableHead>
+              <TableHead className="min-w-28">Centro</TableHead>
+              <TableHead className="w-24">Cod. Autoriz.</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {currentTransactions.map((t) => (
               <TableRow key={t.id}>
-                <TableCell className="font-mono text-xs">
+                <TableCell className="whitespace-nowrap font-mono text-xs">
                   {formatDate(t.fecha)}
                 </TableCell>
-                <TableCell className="font-mono text-xs">
+                <TableCell className="whitespace-nowrap font-mono text-xs">
                   {t.tarjeta}
                 </TableCell>
-                <TableCell className="text-right font-medium">
+                <TableCell className="whitespace-nowrap text-right font-medium">
                   {formatCurrency(t.valor)}
                 </TableCell>
-                <TableCell className="font-mono text-xs">
-                  {t.codEstablecimiento}
+                <TableCell className="whitespace-nowrap font-mono text-xs">
+                  {t.codEstablecimiento || "-"}
                 </TableCell>
-                <TableCell className="max-w-40 truncate text-sm" title={t.marca || ""}>
+                <TableCell className="max-w-48 truncate text-sm" title={t.marca || ""}>
                   {t.marca || "-"}
                 </TableCell>
-                <TableCell className="text-sm">{t.redAdquirente}</TableCell>
+                <TableCell className="whitespace-nowrap text-sm">
+                  {t.redAdquirente || "-"}
+                </TableCell>
                 <TableCell className="text-sm">{t.nombreCentro}</TableCell>
-                <TableCell className="font-mono text-xs">
-                  {t.codAutorizacion}
+                <TableCell className="whitespace-nowrap font-mono text-xs">
+                  {t.codAutorizacion || "-"}
                 </TableCell>
               </TableRow>
             ))}

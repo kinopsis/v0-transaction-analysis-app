@@ -41,10 +41,10 @@ export function parseDate(dateStr: string): { fecha: string; mes: number; anio: 
   return null;
 }
 
-// Validate datáfono number (8 digits)
+// Validate datáfono/device number (alphanumeric, non-empty)
 export function validateDatafono(nro: string): boolean {
-  const cleaned = nro?.toString().replace(/[^0-9]/g, "") || "";
-  return cleaned.length === 8;
+  const cleaned = nro?.toString().trim() || "";
+  return cleaned.length > 0;
 }
 
 // Validate tarjeta number (12 digits)
@@ -220,13 +220,13 @@ export async function importTransacciones(
       ""
     ).trim();
 
-    // Validate datáfono (device number)
+    // Validate datáfono (device number) - must be non-empty
     if (!validateDatafono(nroDispositivo)) {
       errors.push({
         fila,
         campo: "Nro dispositivo",
         valor: nroDispositivo,
-        mensaje: "El número de dispositivo debe tener 8 dígitos",
+        mensaje: "El número de dispositivo es requerido",
       });
       return;
     }
