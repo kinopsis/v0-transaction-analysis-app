@@ -191,40 +191,42 @@ export function exportRemanentesExcel(remanentes: Remanente[], filename: string)
 export function exportRemanentesPDF(remanentes: Remanente[], filename: string) {
   const doc = new jsPDF("landscape");
   
-  doc.setFontSize(16);
-  doc.text("Reporte de Remanentes", 14, 15);
-  doc.setFontSize(10);
-  doc.text(`Generado: ${new Date().toLocaleDateString("es-CO")}`, 14, 22);
-  doc.text(`Total: ${remanentes.length} remanentes`, 14, 28);
+  doc.setFontSize(18);
+  doc.setTextColor(30, 41, 59); // Slate-800
+  doc.text("REPORTE EJECUTIVO DE REMANENTES", 14, 15);
   
-  // Summary stats
+  doc.setFontSize(10);
+  doc.setTextColor(100, 116, 139); // Slate-500
+  doc.text(`Generado: ${new Date().toLocaleDateString("es-CO")} ${new Date().toLocaleTimeString("es-CO")}`, 14, 22);
+  doc.text(`Total Registros: ${remanentes.length}`, 14, 28);
+  
+  // Summary boxes logic
   const porSolicitar = remanentes.filter((r) =>
     r.estado.toLowerCase().includes("por solicitar")
-  ).length;
-  const vendidas = remanentes.filter((r) =>
-    r.estado.toLowerCase().includes("vendida")
   ).length;
   const totalSaldoNoDevuelto = remanentes.reduce(
     (sum, r) => sum + (r.saldoNoDevuelto || 0),
     0
   );
   
+  doc.setFontSize(11);
+  doc.setTextColor(30, 41, 59);
   doc.text(
-    `Por solicitar: ${porSolicitar} | Vendidas: ${vendidas} | Total saldo no devuelto: ${formatCurrency(totalSaldoNoDevuelto)}`,
+    `RESUMEN: Por solicitar: ${porSolicitar} | Saldo total no devuelto: ${formatCurrency(totalSaldoNoDevuelto)}`,
     14,
-    34
+    35
   );
   
   const tableData = remanentes.map((r) => [
-    `${r.tarjeta.slice(0, 4)}****${r.tarjeta.slice(-4)}`,
+    r.tarjeta,
     r.estado,
+    formatCurrency(r.monto),
     formatCurrency(r.saldoFinal),
     formatCurrency(r.saldoNoDevuelto),
     r.fechaVenta,
     r.fechaVencimiento,
-    r.idOrigen,
     r.subtipo,
-    r.saldo > 0 ? formatCurrency(r.saldo) : "-",
+    formatCurrency(r.saldo),
   ]);
   
   autoTable(doc, {
@@ -232,19 +234,20 @@ export function exportRemanentesPDF(remanentes: Remanente[], filename: string) {
       [
         "Tarjeta",
         "Estado",
+        "Monto Asig.",
         "Saldo Final",
         "Saldo No Dev.",
         "F. Venta",
         "F. Venc.",
-        "ID Origen",
         "Subtipo",
-        "Saldo",
+        "Saldo Act.",
       ],
     ],
     body: tableData,
-    startY: 40,
-    styles: { fontSize: 7 },
-    headStyles: { fillColor: [59, 130, 246] },
+    startY: 42,
+    styles: { fontSize: 7, cellPadding: 2 },
+    headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: "bold" }, // Slate-900
+    alternateRowStyles: { fillColor: [248, 250, 252] }, // Slate-50
   });
   
   doc.save(`${filename}.pdf`);
