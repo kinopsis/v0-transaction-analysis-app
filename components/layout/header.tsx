@@ -11,12 +11,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MESES, YEARS } from "@/lib/constants";
+import type { CentroComercial } from "@/lib/types";
 
 interface HeaderProps {
   title: string;
   subtitle?: string;
   showImport?: boolean;
   showPeriodFilter?: boolean;
+  showCentroFilter?: boolean;
+  centros?: CentroComercial[];
+  selectedCentroId?: string;
+  onCentroChange?: (centroId: string | undefined) => void;
   onImport?: (file: File) => void;
   selectedMes?: number;
   selectedAnio?: number;
@@ -29,6 +34,10 @@ export function Header({
   subtitle,
   showImport = false,
   showPeriodFilter = false,
+  showCentroFilter = false,
+  centros = [],
+  selectedCentroId,
+  onCentroChange,
   onImport,
   selectedMes,
   selectedAnio,
@@ -55,6 +64,27 @@ export function Header({
       </div>
 
       <div className="flex items-center gap-3">
+        {showCentroFilter && centros.length > 0 && (
+          <Select
+            value={selectedCentroId || "all"}
+            onValueChange={(v) =>
+              onCentroChange?.(v === "all" ? undefined : v)
+            }
+          >
+            <SelectTrigger className="w-44 bg-secondary">
+              <SelectValue placeholder="Centro Comercial" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los centros</SelectItem>
+              {centros.map((centro) => (
+                <SelectItem key={centro.id} value={centro.id}>
+                  {centro.nombre}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
         {showPeriodFilter && (
           <>
             <Select

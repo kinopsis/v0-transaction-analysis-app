@@ -80,39 +80,77 @@ export async function exportDashboardToPdf(options: PdfExportOptions): Promise<v
   let yPosition = 55;
 
   // Calculate commission summary
-  const comisionSummary = calculateComisionSummary(transacciones, centros, centroId);
+  const comisionSummary = calculateComisionSummary(transacciones, centros, centroId, mes, anio);
   
   // Draw Commission Summary Box
   if (comisionSummary) {
     yPosition = drawComisionSummaryBox(doc, comisionSummary, margin, yPosition, pageWidth);
-    yPosition += 10;
+    yPosition += 8;
   }
 
-  // Add commission breakdown table if showing all centros
-  if (comisionSummary && !comisionSummary.isFiltered && comisionSummary.detalles.length > 0) {
-    yPosition = addComisionBreakdownTable(doc, comisionSummary, margin, yPosition, pageWidth, pageHeight);
-  }
-
-  // Capture charts as images if container exists
+  // Capture charts as images FIRST (on first page after summary)
   if (chartsContainer) {
     const html2canvas = (await import("html2canvas")).default;
     
     // Wait a bit to ensure all charts are fully rendered
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 300));
     
     // Find all chart cards
     const chartCards = chartsContainer.querySelectorAll("[data-chart-export]");
     
     for (const chartCard of Array.from(chartCards)) {
       try {
-        const canvas = await html2canvas(chartCard as HTMLElement, {
+        // Apply temporary inline styles to handle lab() colors before capture
+        const chartElement = chartCard as HTMLElement;
+        const allElements = chartElement.querySelectorAll('*');
+        const originalStyles: Map<HTMLElement, { bg: string; color: string; borderColor: string }> = new Map();
+        
+        // Store original styles and apply fallback colors
+        allElements.forEach((el) => {
+          const htmlEl = el as HTMLElement;
+          const computed = window.getComputedStyle(htmlEl);
+          originalStyles.set(htmlEl, {
+            bg: htmlEl.style.backgroundColor,
+            color: htmlEl.style.color,
+            borderColor: htmlEl.style.borderColor,
+          });
+          
+          // Force computed colors to be applied as inline styles
+          if (computed.backgroundColor) {
+            try {
+              htmlEl.style.backgroundColor = computed.backgroundColor;
+            } catch {
+              htmlEl.style.backgroundColor = '#0f172a';
+            }
+          }
+          if (computed.color) {
+            try {
+              htmlEl.style.color = computed.color;
+            } catch {
+              htmlEl.style.color = '#e2e8f0';
+            }
+          }
+        });
+
+        const canvas = await html2canvas(chartElement, {
           backgroundColor: "#0f172a", // slate-900
-          scale: 2,
+          scale: 1.5,
           logging: false,
           useCORS: true,
           allowTaint: true,
-          foreignObjectRendering: true,
-          imageTimeout: 10000,
+          foreignObjectRendering: false,
+          imageTimeout: 15000,
+          ignoreElements: (element) => {
+            // Ignore elements with problematic styling
+            return element.tagName === 'STYLE';
+          },
+        });
+        
+        // Restore original styles
+        originalStyles.forEach((styles, el) => {
+          el.style.backgroundColor = styles.bg;
+          el.style.color = styles.color;
+          el.style.borderColor = styles.borderColor;
         });
         
         const imgData = canvas.toDataURL("image/png");
@@ -126,12 +164,17 @@ export async function exportDashboardToPdf(options: PdfExportOptions): Promise<v
         }
         
         doc.addImage(imgData, "PNG", margin, yPosition, imgWidth, imgHeight);
-        yPosition += imgHeight + 10;
+        yPosition += imgHeight + 8;
       } catch (error) {
         // Log error for debugging but continue
         console.warn("Failed to capture chart:", error);
       }
     }
+  }
+
+  // Add commission breakdown table AFTER charts (if showing all centros)
+  if (comisionSummary && !comisionSummary.isFiltered && comisionSummary.detalles.length > 0) {
+    yPosition = addComisionBreakdownTable(doc, comisionSummary, margin, yPosition, pageWidth, pageHeight);
   }
 
   // Add transactions table if requested
@@ -269,12 +312,15 @@ interface ComisionSummaryData {
   isFiltered: boolean;
   centroNombre?: string;
   detalles: ComisionReporte[];
+  periodoFacturado: string;
 }
 
 function calculateComisionSummary(
   transacciones: Transaccion[],
   centros: CentroComercial[],
-  centroId?: string
+  centroId?: string,
+  mes?: number,
+  anio?: number
 ): ComisionSummaryData | null {
   if (transacciones.length === 0) return null;
 
@@ -317,6 +363,14 @@ function calculateComisionSummary(
     ? centros.find((c) => c.id === centroId)?.nombre
     : undefined;
 
+  // Build periodo string
+  let periodoFacturado = "Todos los registros";
+  if (mes && anio) {
+    periodoFacturado = `${MESES[mes - 1]} ${anio}`;
+  } else if (anio) {
+    periodoFacturado = `Año ${anio}`;
+  }
+
   return {
     totalTransacciones,
     volumenTotal,
@@ -326,6 +380,7 @@ function calculateComisionSummary(
     isFiltered,
     centroNombre,
     detalles,
+    periodoFacturado,
   };
 }
 
@@ -337,67 +392,71 @@ function drawComisionSummaryBox(
   pageWidth: number
 ): number {
   const boxWidth = pageWidth - margin * 2;
+  const boxHeight = 52;
   
-  // Box background - smaller height since breakdown table is separate
+  // Box background
   doc.setFillColor(30, 41, 59); // slate-800
   doc.setDrawColor(51, 65, 85); // slate-700
-  doc.roundedRect(margin, startY, boxWidth, 65, 3, 3, "FD");
+  doc.roundedRect(margin, startY, boxWidth, boxHeight, 3, 3, "FD");
 
-  // Title
-  doc.setFontSize(12);
+  // Title and Period on same line
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(255, 255, 255);
   const title = summary.isFiltered
-    ? `Resumen de Comisiones - ${summary.centroNombre}`
-    : "Resumen General de Comisiones";
-  doc.text(title, margin + 8, startY + 12);
+    ? `Resumen - ${summary.centroNombre}`
+    : "Resumen General";
+  doc.text(title, margin + 6, startY + 10);
 
-  // Summary data in a grid layout
-  const col1X = margin + 8;
-  const col2X = margin + boxWidth / 2 + 8;
-  let rowY = startY + 24;
-
-  doc.setFontSize(9);
+  // Period badge
+  doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(148, 163, 184); // slate-400
+  doc.text(`Periodo: ${summary.periodoFacturado}`, pageWidth - margin - 6, startY + 10, { align: "right" });
 
-  // Row 1
-  doc.text("Total Transacciones:", col1X, rowY);
-  doc.text("Volumen Total:", col2X, rowY);
+  // Data row - 4 columns layout
+  const colWidth = (boxWidth - 12) / 4;
+  const col1X = margin + 6;
+  const col2X = col1X + colWidth;
+  const col3X = col2X + colWidth;
+  const col4X = col3X + colWidth;
+  const dataRowY = startY + 22;
 
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.text(formatNumber(summary.totalTransacciones), col1X + 75, rowY);
-  doc.text(formatCurrency(summary.volumenTotal), col2X + 55, rowY);
-
-  // Row 2
-  rowY += 14;
+  // Labels
+  doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
-  doc.setFont("helvetica", "normal");
-  doc.text("Comision (2%):", col1X, rowY);
-  doc.text("Cuota Fija:", col2X, rowY);
+  doc.text("Transacciones", col1X, dataRowY);
+  doc.text("Volumen", col2X, dataRowY);
+  doc.text("Comision (2%)", col3X, dataRowY);
+  doc.text("Cuota Fija", col4X, dataRowY);
 
-  doc.setTextColor(59, 130, 246); // blue-500
+  // Values
+  const valueRowY = dataRowY + 8;
+  doc.setFontSize(9);
   doc.setFont("helvetica", "bold");
-  doc.text(formatCurrency(summary.comisionTotal), col1X + 75, rowY);
+  doc.setTextColor(255, 255, 255);
+  doc.text(formatNumber(summary.totalTransacciones), col1X, valueRowY);
+  doc.text(formatCurrency(summary.volumenTotal), col2X, valueRowY);
+  doc.setTextColor(59, 130, 246); // blue-500
+  doc.text(formatCurrency(summary.comisionTotal), col3X, valueRowY);
   doc.setTextColor(34, 197, 94); // green-500
-  doc.text(formatCurrency(summary.cuotaFijaTotal), col2X + 55, rowY);
+  doc.text(formatCurrency(summary.cuotaFijaTotal), col4X, valueRowY);
 
-  // Grand Total Row
-  rowY += 16;
+  // Total row at bottom
+  const totalRowY = startY + boxHeight - 8;
   doc.setFillColor(15, 23, 42); // slate-900
-  doc.roundedRect(margin + 4, rowY - 5, boxWidth - 8, 18, 2, 2, "F");
+  doc.roundedRect(margin + 3, totalRowY - 6, boxWidth - 6, 12, 2, 2, "F");
   
-  doc.setFontSize(11);
+  doc.setFontSize(9);
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.text("TOTAL A FACTURAR:", margin + 12, rowY + 6);
+  doc.text("TOTAL A FACTURAR:", margin + 8, totalRowY);
   
   doc.setTextColor(34, 197, 94); // green-500
-  doc.setFontSize(13);
-  doc.text(formatCurrency(summary.grandTotal), pageWidth - margin - 12, rowY + 6, { align: "right" });
+  doc.setFontSize(11);
+  doc.text(formatCurrency(summary.grandTotal), pageWidth - margin - 8, totalRowY, { align: "right" });
 
-  return rowY;
+  return startY + boxHeight;
 }
 
 function formatNumber(value: number): string {
@@ -478,12 +537,12 @@ function addComisionBreakdownTable(
       lineWidth: 0.1,
     },
     columnStyles: {
-      0: { cellWidth: 40 },
-      1: { cellWidth: 25, halign: "right" },
-      2: { cellWidth: 32, halign: "right" },
-      3: { cellWidth: 28, halign: "right" },
-      4: { cellWidth: 25, halign: "right" },
-      5: { cellWidth: 28, halign: "right", fontStyle: "bold" },
+      0: { cellWidth: 35 },
+      1: { cellWidth: 22, halign: "right" },
+      2: { cellWidth: 30, halign: "right" },
+      3: { cellWidth: 25, halign: "right" },
+      4: { cellWidth: 22, halign: "right" },
+      5: { cellWidth: 25, halign: "right", fontStyle: "bold" },
     },
     margin: { left: margin, right: margin },
     didParseCell: (data) => {
