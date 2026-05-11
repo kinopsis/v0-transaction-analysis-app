@@ -44,8 +44,13 @@ export function DashboardTab() {
     [filteredTransacciones]
   );
 
-  const monthlyData = useMemo(
-    () => calculateMonthlyData(filteredTransacciones, state.centros),
+  const monthlyDataVolumen = useMemo(
+    () => calculateMonthlyData(filteredTransacciones, state.centros, "volumen"),
+    [filteredTransacciones, state.centros]
+  );
+
+  const monthlyDataTransacciones = useMemo(
+    () => calculateMonthlyData(filteredTransacciones, state.centros, "transacciones"),
     [filteredTransacciones, state.centros]
   );
 
@@ -214,7 +219,8 @@ export function DashboardTab() {
         {/* Monthly Trend Chart */}
         <div className="mt-6">
           <MonthlyChart
-            data={monthlyData}
+            dataVolumen={monthlyDataVolumen}
+            dataTransacciones={monthlyDataTransacciones}
             centros={state.centros}
             selectedCentroIds={selectedCentroIds}
           />

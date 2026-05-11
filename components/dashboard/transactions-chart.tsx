@@ -108,7 +108,7 @@ export function TransactionsChart({ transacciones }: TransactionsChartProps) {
                   }}
                   formatter={(value: number) => [
                     formatNumber(value),
-                    "Transacciones",
+                    <span style={{ color: "oklch(0.93 0.01 250)" }}>Transacciones</span>,
                   ]}
                   labelFormatter={(label) => `Fecha: ${label}`}
                 />
