@@ -78,6 +78,9 @@ export async function exportDashboardToPdf(options: PdfExportOptions): Promise<v
   if (chartsContainer) {
     const html2canvas = (await import("html2canvas")).default;
     
+    // Wait a bit to ensure all charts are fully rendered
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
     // Find all chart cards
     const chartCards = chartsContainer.querySelectorAll("[data-chart-export]");
     
@@ -88,6 +91,9 @@ export async function exportDashboardToPdf(options: PdfExportOptions): Promise<v
           scale: 2,
           logging: false,
           useCORS: true,
+          allowTaint: true,
+          foreignObjectRendering: true,
+          imageTimeout: 10000,
         });
         
         const imgData = canvas.toDataURL("image/png");
@@ -102,9 +108,9 @@ export async function exportDashboardToPdf(options: PdfExportOptions): Promise<v
         
         doc.addImage(imgData, "PNG", margin, yPosition, imgWidth, imgHeight);
         yPosition += imgHeight + 10;
-      } catch {
-        // Skip chart if capture fails
-        console.warn("Failed to capture chart");
+      } catch (error) {
+        // Log error for debugging but continue
+        console.warn("Failed to capture chart:", error);
       }
     }
   }
