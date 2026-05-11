@@ -63,72 +63,9 @@ export function Header({
         )}
       </div>
 
-      <div className="flex items-center gap-3">
-        {showCentroFilter && centros.length > 0 && (
-          <Select
-            value={selectedCentroId || "all"}
-            onValueChange={(v) =>
-              onCentroChange?.(v === "all" ? undefined : v)
-            }
-          >
-            <SelectTrigger className="w-44 bg-secondary">
-              <SelectValue placeholder="Centro Comercial" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los centros</SelectItem>
-              {centros.map((centro) => (
-                <SelectItem key={centro.id} value={centro.id}>
-                  {centro.nombre}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        {showPeriodFilter && (
-          <>
-            <Select
-              value={selectedMes?.toString() || "all"}
-              onValueChange={(v) =>
-                onMesChange?.(v === "all" ? undefined : parseInt(v))
-              }
-            >
-              <SelectTrigger className="w-36 bg-secondary">
-                <SelectValue placeholder="Mes" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los meses</SelectItem>
-                {MESES.map((m) => (
-                  <SelectItem key={m.value} value={m.value.toString()}>
-                    {m.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={selectedAnio?.toString() || "all"}
-              onValueChange={(v) =>
-                onAnioChange?.(v === "all" ? undefined : parseInt(v))
-              }
-            >
-              <SelectTrigger className="w-28 bg-secondary">
-                <SelectValue placeholder="Año" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                {YEARS.map((y) => (
-                  <SelectItem key={y} value={y.toString()}>
-                    {y}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </>
-        )}
-
+      <div className="flex items-center gap-4">
         {showImport && (
-          <>
+          <div className="flex items-center">
             <input
               ref={fileInputRef}
               type="file"
@@ -138,12 +75,13 @@ export function Header({
             />
             <Button
               onClick={() => fileInputRef.current?.click()}
-              className="gap-2"
+              className="gap-2 shadow-sm"
+              size="sm"
             >
               <Upload className="h-4 w-4" />
               Importar archivo
             </Button>
-          </>
+          </div>
         )}
       </div>
     </header>

@@ -18,6 +18,11 @@ export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
+export const MONTH_NAMES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+];
+
 // Parse date from YYYYMMDD format
 export function parseDate(dateStr: string): { fecha: string; mes: number; anio: number } | null {
   if (!dateStr) return null;
@@ -170,9 +175,10 @@ const CENTRO_ALIASES: Record<string, string[]> = {
   oviedo: ["oviedo"],
   fundadores: ["fundadores"],
   "camino-real": ["camino real"],
-  molinos: ["molinos"],
+  molinos: ["molinos", "los molinos"],
   florida: ["florida"],
   asocentros: ["asocentros"],
+  monterrey: ["monterrey"],
 };
 
 // Resolve a centro name from a CSV value to a CentroComercial
@@ -412,15 +418,14 @@ export async function importTransacciones(
     }
     batchKeys.add(compositeKey);
 
-    // VALIDATION 5 — DATAFONO CORRESPONDENCE CHECK:
+    // VALIDATION 5 — DATAFONO CORRESPONDENCE CHECK (SOFT VALIDATION):
     // The "Código establecimiento" (8-digit) in the CSV should correspond to a
-    // Datáfono registered in Configuración. If not, we still import the transaction
-    // but mark it with datafonoNoRegistrado = true so it can be highlighted in the UI
-    // for manual correction.
+    // Datáfono registered in Configuración. If not, we still import the
+    // transaction but assign it to "Por definir" for manual correction.
     const isDatafonoRegistered = registeredDatafonoMap.has(codEstablecimiento);
     if (!isDatafonoRegistered) {
       unregisteredSet.add(codEstablecimiento);
-      rejectedUnregistered++; // Track count for reporting (now "flagged" not "rejected")
+      rejectedUnregistered++;
     }
 
     // Parse value
@@ -430,8 +435,21 @@ export async function importTransacciones(
         : parseFloat(String(valorRaw).replace(/[^0-9.-]/g, "")) || 0;
 
     // Find centro by codEstablecimiento (primary key — identical to Datafono.codEstablecimiento)
-    const { centroId, nombreCentro, nombreComercio, marca } =
-      findCentroByCodEstablecimiento(codEstablecimiento, datafonos, centros);
+    // If not registered, assign to "Por definir" for manual correction
+    let centroId: string;
+    let nombreCentro: string;
+    let transaccionMarca: string | undefined;
+
+    if (isDatafonoRegistered) {
+      const result = findCentroByCodEstablecimiento(codEstablecimiento, datafonos, centros);
+      centroId = result.centroId;
+      nombreCentro = result.nombreCentro;
+      transaccionMarca = result.nombreComercio || result.marca;
+    } else {
+      centroId = "por-definir";
+      nombreCentro = "Por definir";
+      transaccionMarca = undefined;
+    }
 
     transacciones.push({
       id: generateId(),
@@ -446,7 +464,7 @@ export async function importTransacciones(
       codAutorizacion,
       centroId,
       archivoId,
-      marca: nombreComercio || marca,
+      marca: transaccionMarca,
       nombreCentro,
       mes: dateResult.mes,
       anio: dateResult.anio,
@@ -842,7 +860,7 @@ export function calculateComisionReporte(
     grouped.set(t.centroId, existing);
   });
   
-  return centros.map((centro) => {
+  const detalles = centros.map((centro) => {
     const centroTransacciones = grouped.get(centro.id) || [];
     const volumen = centroTransacciones.reduce((sum, t) => sum + t.valor, 0);
     const comision = volumen * COMMISSION_RATE;
@@ -857,6 +875,30 @@ export function calculateComisionReporte(
       total: comision + centro.cuotaFija,
     };
   }).filter((r) => r.totalTransacciones > 0);
+
+  // Include transactions with unregistered centroIds (e.g. "por-definir")
+  // so that totals match the KPI cards exactly
+  const registeredCentroIds = new Set(centros.map((c) => c.id));
+  const unregisteredGroups = Array.from(grouped.entries())
+    .filter(([cId]) => !registeredCentroIds.has(cId));
+
+  if (unregisteredGroups.length > 0) {
+    const unregisteredTransacciones = unregisteredGroups.flatMap(([, txns]) => txns);
+    const volumen = unregisteredTransacciones.reduce((sum, t) => sum + t.valor, 0);
+    const comision = volumen * COMMISSION_RATE;
+
+    detalles.push({
+      centroId: "por-definir",
+      nombreCentro: "Por definir",
+      totalTransacciones: unregisteredTransacciones.length,
+      volumen,
+      comision,
+      cuotaFija: 0,
+      total: comision,
+    });
+  }
+
+  return detalles;
 }
 
 // Calculate monthly data for charts

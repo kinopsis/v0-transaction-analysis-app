@@ -9,6 +9,7 @@ import { MonthlyChart } from "./monthly-chart";
 import { TransactionsChart } from "./transactions-chart";
 import { TopMarcasChart } from "./top-marcas-chart";
 import { TopComerciosMontoChart } from "./top-comercios-monto-chart";
+import { DashboardFilters } from "./dashboard-filters";
 import { useAppStore } from "@/lib/store";
 import {
   importTransacciones,
@@ -99,10 +100,6 @@ export function DashboardTab() {
         const descParts: string[] = [];
         if (duplicates > 0)
           descParts.push(`${duplicates} duplicados ignorados`);
-        if (rejectedUnregistered > 0)
-          descParts.push(
-            `${rejectedUnregistered} transacciones con datafono no registrado (resaltadas)`
-          );
 
         toast.success(
           `${transacciones.length} transacciones importadas correctamente`,
@@ -120,17 +117,17 @@ export function DashboardTab() {
           });
         }
 
-        // Warn (not error) about unregistered datafono codes - transactions ARE imported but flagged
+        // Warn about unregistered datafono codes - transactions were imported with centro "Por definir"
         if (unregisteredCodes.length > 0) {
           const sample = unregisteredCodes.slice(0, 5).join(", ");
           const extra =
             unregisteredCodes.length > 5
-              ? ` y ${unregisteredCodes.length - 5} mas`
+              ? ` y ${unregisteredCodes.length - 5} más`
               : "";
           toast.warning(
-            `${rejectedUnregistered} transaccion(es) con datafono no registrado`,
+            `${rejectedUnregistered} transacción(es) con datáfono no registrado`,
             {
-              description: `Los codigos: ${sample}${extra} no coinciden con ningun datafono en Configuracion. Estas transacciones se importaron pero estan resaltadas en la tabla para correccion manual.`,
+              description: `Los códigos: ${sample}${extra} no coinciden con ningún datáfono en Configuración. Se importaron con centro "Por definir" para corrección manual.`,
               duration: 10000,
             }
           );
@@ -198,9 +195,10 @@ export function DashboardTab() {
         anio: selectedAnio,
         fechaGeneracion,
         incluirTransacciones: withTransactions,
-        transacciones: withTransactions ? filteredTransacciones : filteredTransacciones,
+        transacciones: filteredTransacciones,
         chartsContainer: chartsContainerRef.current,
         centros: state.centros,
+        kpis,
       });
 
       toast.success("PDF exportado correctamente", {
@@ -224,43 +222,40 @@ export function DashboardTab() {
         title="Dashboard"
         subtitle={`${state.transacciones.length} transacciones cargadas`}
         showImport
-        showPeriodFilter
-        showCentroFilter
-        centros={state.centros}
-        selectedCentroId={selectedCentroIds[0]}
-        onCentroChange={handleCentroChange}
         onImport={handleImport}
-        selectedMes={selectedMes}
-        selectedAnio={selectedAnio}
-        onMesChange={setSelectedMes}
-        onAnioChange={setSelectedAnio}
       />
 
-      <div className="flex-1 overflow-auto p-6">
-        {/* Export Button Row */}
-        <div className="mb-6 flex items-center justify-end">
-          <Button
-            variant="outline"
-            onClick={handleExportClick}
-            disabled={isExporting || state.transacciones.length === 0}
-          >
-            <FileDown className="mr-2 h-4 w-4" />
-            {isExporting ? "Exportando..." : "Exportar PDF"}
-          </Button>
-        </div>
+      <div className="flex-1 overflow-auto p-6 pt-2">
+        {/* Dashboard Filters Section */}
+        <DashboardFilters
+          centros={state.centros}
+          selectedCentroId={selectedCentroIds[0]}
+          onCentroChange={handleCentroChange}
+          selectedMes={selectedMes}
+          onMesChange={setSelectedMes}
+          selectedAnio={selectedAnio}
+          onAnioChange={setSelectedAnio}
+          onExportPdf={handleExportClick}
+          isExporting={isExporting}
+          hasData={filteredTransacciones.length > 0}
+        />
 
         {/* KPI Cards */}
         <KPICards data={kpis} />
 
         {/* Charts Container for PDF Export */}
         <div ref={chartsContainerRef}>
-          {/* Charts Grid */}
-          <div className="mt-6 grid gap-6 lg:grid-cols-2" data-chart-export>
+          {/* Charts Grid - each chart has its own export marker */}
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
             {/* Transactions by Day Chart */}
-            <TransactionsChart transacciones={filteredTransacciones} />
+            <div data-chart-export>
+              <TransactionsChart transacciones={filteredTransacciones} />
+            </div>
 
             {/* Top 10 Brands by Transaction Count */}
-            <TopMarcasChart transacciones={filteredTransacciones} />
+            <div data-chart-export>
+              <TopMarcasChart transacciones={filteredTransacciones} />
+            </div>
           </div>
 
           {/* Top 10 Comercios by Volume */}

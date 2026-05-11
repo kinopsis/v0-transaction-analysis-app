@@ -64,6 +64,12 @@ export const CENTROS_INICIALES: CentroComercial[] = [
     codigosEstablecimiento: ["17942798"],
     cuotaFija: DEFAULT_CUOTA_FIJA,
   },
+  {
+    id: "monterrey",
+    nombre: "Monterrey",
+    codigosEstablecimiento: [],
+    cuotaFija: DEFAULT_CUOTA_FIJA,
+  },
 ];
 
 export const CHART_COLORS = [
