@@ -201,12 +201,14 @@ export function DashboardTab() {
       await exportDashboardToPdf({
         titulo: "Reporte de Dashboard",
         centroNombre,
+        centroId: selectedCentroIds[0],
         mes: selectedMes,
         anio: selectedAnio,
         fechaGeneracion,
         incluirTransacciones: withTransactions,
-        transacciones: withTransactions ? filteredTransacciones : [],
+        transacciones: withTransactions ? filteredTransacciones : filteredTransacciones,
         chartsContainer: chartsContainerRef.current,
+        centros: state.centros,
       });
 
       toast.success("PDF exportado correctamente", {
@@ -239,10 +241,10 @@ export function DashboardTab() {
       />
 
       <div className="flex-1 overflow-auto p-6">
-        {/* Centro filter and Export */}
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-muted-foreground">
+        {/* Filters Row - Aligned horizontally */}
+        <div className="mb-6 flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
               Centro Comercial:
             </span>
             <Select
@@ -261,26 +263,28 @@ export function DashboardTab() {
                 ))}
               </SelectContent>
             </Select>
-
-            {selectedCentroIds.length > 0 && (
-              <Badge
-                variant="secondary"
-                className="cursor-pointer"
-                onClick={() => setSelectedCentroIds([])}
-              >
-                Limpiar filtro
-              </Badge>
-            )}
           </div>
 
-          <Button
-            variant="outline"
-            onClick={handleExportClick}
-            disabled={isExporting || state.transacciones.length === 0}
-          >
-            <FileDown className="mr-2 h-4 w-4" />
-            {isExporting ? "Exportando..." : "Exportar PDF"}
-          </Button>
+          {selectedCentroIds.length > 0 && (
+            <Badge
+              variant="secondary"
+              className="cursor-pointer hover:bg-destructive/20 hover:text-destructive transition-colors"
+              onClick={() => setSelectedCentroIds([])}
+            >
+              Limpiar filtro
+            </Badge>
+          )}
+
+          <div className="ml-auto">
+            <Button
+              variant="outline"
+              onClick={handleExportClick}
+              disabled={isExporting || state.transacciones.length === 0}
+            >
+              <FileDown className="mr-2 h-4 w-4" />
+              {isExporting ? "Exportando..." : "Exportar PDF"}
+            </Button>
+          </div>
         </div>
 
         {/* KPI Cards */}
