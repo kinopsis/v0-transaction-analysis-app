@@ -73,13 +73,9 @@ export function ConfigTab() {
   const [editingDatafono, setEditingDatafono] = useState<Datafono | null>(null);
   const [editDatafonoForm, setEditDatafonoForm] = useState<{
     nombreComercio: string;
-    marca: string;
-    centroId: string;
     fechaEfectiva: string;
   }>({
     nombreComercio: "",
-    marca: "",
-    centroId: "",
     fechaEfectiva: new Date().toISOString().split("T")[0],
   });
   const [showHistorial, setShowHistorial] = useState<Datafono | null>(null);
@@ -149,8 +145,6 @@ export function ConfigTab() {
     setEditingDatafono(datafono);
     setEditDatafonoForm({
       nombreComercio: datafono.nombreComercio || "",
-      marca: datafono.marca || "",
-      centroId: datafono.centroId,
       fechaEfectiva: new Date().toISOString().split("T")[0],
     });
   };
@@ -158,34 +152,27 @@ export function ConfigTab() {
   const handleSaveEditDatafono = () => {
     if (!editingDatafono) return;
 
-    if (!editDatafonoForm.centroId) {
-      toast.error("Por favor selecciona un centro comercial");
-      return;
-    }
-
-    // Create history entry from current values (before edit)
-    const currentHistoryEntry: DatafonoHistoryEntry = {
+    // Create history entry with the new name effective from the date
+    const newHistoryEntry: DatafonoHistoryEntry = {
       fechaEfectiva: editDatafonoForm.fechaEfectiva,
       nombreComercio: editDatafonoForm.nombreComercio || undefined,
-      marca: editDatafonoForm.marca || undefined,
-      centroId: editDatafonoForm.centroId,
     };
 
-    // Build new historial: keep previous entries + add snapshot of OLD values before edit date
+    // Build new historial: keep previous entries + add new entry
     const existingHistorial = editingDatafono.historial || [];
     
-    // Create a snapshot of the previous state for records BEFORE the effective date
-    const previousStateEntry: DatafonoHistoryEntry = {
-      fechaEfectiva: "1900-01-01", // Beginning of time - represents original state
-      nombreComercio: editingDatafono.nombreComercio,
-      marca: editingDatafono.marca,
-      centroId: editingDatafono.centroId,
-    };
-
-    // Only add previous state if historial was empty (first edit)
-    const newHistorial: DatafonoHistoryEntry[] = existingHistorial.length === 0
-      ? [previousStateEntry, currentHistoryEntry]
-      : [...existingHistorial, currentHistoryEntry];
+    // If this is the first edit, save the original state
+    let newHistorial: DatafonoHistoryEntry[];
+    if (existingHistorial.length === 0) {
+      // Create a snapshot of the original state
+      const originalEntry: DatafonoHistoryEntry = {
+        fechaEfectiva: "1900-01-01", // Beginning of time - represents original state
+        nombreComercio: editingDatafono.nombreComercio,
+      };
+      newHistorial = [originalEntry, newHistoryEntry];
+    } else {
+      newHistorial = [...existingHistorial, newHistoryEntry];
+    }
 
     // Sort by fechaEfectiva
     newHistorial.sort((a, b) => a.fechaEfectiva.localeCompare(b.fechaEfectiva));
@@ -193,25 +180,19 @@ export function ConfigTab() {
     const updatedDatafono: Datafono = {
       ...editingDatafono,
       nombreComercio: editDatafonoForm.nombreComercio || undefined,
-      marca: editDatafonoForm.marca || undefined,
-      centroId: editDatafonoForm.centroId,
       historial: newHistorial,
     };
 
     dispatch({ type: "UPDATE_DATAFONO", payload: updatedDatafono });
     toast.success("Datáfono actualizado", {
-      description: `Cambios efectivos desde ${formatDate(editDatafonoForm.fechaEfectiva)}. Historial preservado.`,
+      description: `Nombre del comercio actualizado desde ${formatDate(editDatafonoForm.fechaEfectiva)}. Historial preservado.`,
     });
     setEditingDatafono(null);
   };
 
-  const getDatafonoAtDate = (datafono: Datafono, fecha: string): { nombreComercio?: string; marca?: string; centroId: string } => {
+  const getDatafonoAtDate = (datafono: Datafono, fecha: string): { nombreComercio?: string } => {
     if (!datafono.historial || datafono.historial.length === 0) {
-      return {
-        nombreComercio: datafono.nombreComercio,
-        marca: datafono.marca,
-        centroId: datafono.centroId,
-      };
+      return { nombreComercio: datafono.nombreComercio };
     }
 
     // Find the most recent entry that is <= fecha
@@ -219,20 +200,12 @@ export function ConfigTab() {
     if (applicableEntries.length === 0) {
       // No history applies, use first entry
       const first = datafono.historial[0];
-      return {
-        nombreComercio: first.nombreComercio,
-        marca: first.marca,
-        centroId: first.centroId,
-      };
+      return { nombreComercio: first.nombreComercio };
     }
 
     // Get the most recent applicable entry
     const latestApplicable = applicableEntries[applicableEntries.length - 1];
-    return {
-      nombreComercio: latestApplicable.nombreComercio,
-      marca: latestApplicable.marca,
-      centroId: latestApplicable.centroId,
-    };
+    return { nombreComercio: latestApplicable.nombreComercio };
   };
 
   const handleImportDatafonos = async (
@@ -318,11 +291,12 @@ export function ConfigTab() {
         (d) => d.codEstablecimiento === t.codEstablecimiento
       );
       if (datafono) {
-        // Use historical data based on transaction date
+        // Use historical data based on transaction date for nombre
         const datafonoData = getDatafonoAtDate(datafono, t.fecha);
-        const centro = state.centros.find((c) => c.id === datafonoData.centroId);
-        const newMarca = datafonoData.nombreComercio || datafonoData.marca;
-        const newCentroId = datafonoData.centroId;
+        // Centro is always from the datafono (does not change)
+        const centro = state.centros.find((c) => c.id === datafono.centroId);
+        const newMarca = datafonoData.nombreComercio || datafono.marca;
+        const newCentroId = datafono.centroId;
         const newNombreCentro = centro?.nombre || "Desconocido";
 
         // Check if there are changes
@@ -347,7 +321,7 @@ export function ConfigTab() {
       dispatch({ type: "CLEAR_TRANSACCIONES" });
       dispatch({ type: "ADD_TRANSACCIONES", payload: updatedTransacciones });
       toast.success(`${updatedCount} transacciones sincronizadas`, {
-        description: "Los datos de comercio y centro han sido actualizados según el historial",
+        description: "Los datos de comercio han sido actualizados según el historial",
       });
     } else {
       toast.info("Todas las transacciones ya están sincronizadas");
@@ -814,9 +788,17 @@ export function ConfigTab() {
           </DialogHeader>
           {editingDatafono && (
             <div className="space-y-4">
-              <div>
-                <Label className="text-xs text-muted-foreground">Cód. Establecimiento</Label>
-                <p className="font-mono text-sm font-medium">{editingDatafono.codEstablecimiento}</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Cód. Establecimiento</Label>
+                  <p className="font-mono text-sm font-medium">{editingDatafono.codEstablecimiento}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Centro Comercial</Label>
+                  <p className="text-sm font-medium">
+                    {state.centros.find((c) => c.id === editingDatafono.centroId)?.nombre || "Desconocido"}
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -836,7 +818,7 @@ export function ConfigTab() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-nombre">Nombre Comercio</Label>
+                <Label htmlFor="edit-nombre">Nombre Comercio (nuevo equipo)</Label>
                 <Input
                   id="edit-nombre"
                   placeholder="Ej: EXITO UNICENTRO"
@@ -846,27 +828,9 @@ export function ConfigTab() {
                   }
                   className="bg-secondary"
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-centro">Centro Comercial *</Label>
-                <Select
-                  value={editDatafonoForm.centroId}
-                  onValueChange={(v) =>
-                    setEditDatafonoForm({ ...editDatafonoForm, centroId: v })
-                  }
-                >
-                  <SelectTrigger className="bg-secondary">
-                    <SelectValue placeholder="Seleccionar..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {state.centros.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.nombre}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Ingrese el nombre del comercio para el nuevo datáfono que reemplaza al anterior.
+                </p>
               </div>
             </div>
           )}
@@ -900,7 +864,6 @@ export function ConfigTab() {
                   <TableRow>
                     <TableHead>Fecha Efectiva</TableHead>
                     <TableHead>Nombre Comercio</TableHead>
-                    <TableHead>Centro</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -910,10 +873,7 @@ export function ConfigTab() {
                         {entry.fechaEfectiva === "1900-01-01" ? "Inicio" : formatDate(entry.fechaEfectiva)}
                       </TableCell>
                       <TableCell className="text-sm">
-                        {entry.nombreComercio || entry.marca || "-"}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {state.centros.find((c) => c.id === entry.centroId)?.nombre || "Desconocido"}
+                        {entry.nombreComercio || "-"}
                       </TableCell>
                     </TableRow>
                   ))}

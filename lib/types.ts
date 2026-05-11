@@ -12,10 +12,6 @@ export interface DatafonoHistoryEntry {
   fechaEfectiva: string;
   /** Nombre del comercio/establecimiento at the time */
   nombreComercio?: string;
-  /** Marca del terminal at the time */
-  marca?: string;
-  /** Centro comercial ID at the time */
-  centroId: string;
 }
 
 // Datáfono mapping - uses codEstablecimiento as primary identifier
