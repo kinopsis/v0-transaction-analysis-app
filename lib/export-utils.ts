@@ -11,11 +11,12 @@ export function exportTransaccionesExcel(transacciones: Transaccion[], filename:
     "Tarjeta": t.tarjeta,
     "Valor": t.valor,
     "Datáfono": t.nroDispositivo,
-    "Nombre Comercio": t.marca || "",
+    "Nombre Comercio": t.datafonoNoRegistrado ? "**COMERCIO POR DEFINIR**" : (t.marca || ""),
     "Red Adquirente": t.redAdquirente,
     "Cod Establecimiento": t.codEstablecimiento,
     "Cod. Autorización": t.codAutorizacion,
-    "Centro Comercial": t.nombreCentro,
+    "Centro Comercial": t.datafonoNoRegistrado ? "**POR CORREGIR**" : t.nombreCentro,
+    "Requiere Corrección": t.datafonoNoRegistrado ? "SI" : "NO",
   }));
   
   const ws = XLSX.utils.json_to_sheet(data);
@@ -28,28 +29,48 @@ export function exportTransaccionesExcel(transacciones: Transaccion[], filename:
 export function exportTransaccionesPDF(transacciones: Transaccion[], filename: string) {
   const doc = new jsPDF("landscape");
   
+  // Count unregistered transactions
+  const unregisteredCount = transacciones.filter((t) => t.datafonoNoRegistrado).length;
+  
   doc.setFontSize(16);
   doc.text("Reporte de Transacciones", 14, 15);
   doc.setFontSize(10);
   doc.text(`Generado: ${new Date().toLocaleDateString("es-CO")}`, 14, 22);
   doc.text(`Total: ${transacciones.length} transacciones`, 14, 28);
   
+  if (unregisteredCount > 0) {
+    doc.setTextColor(255, 140, 0);
+    doc.text(`Transacciones con datafono no registrado: ${unregisteredCount} (requieren correccion)`, 14, 34);
+    doc.setTextColor(0, 0, 0);
+  }
+  
   const tableData = transacciones.map((t) => [
     formatDate(t.fecha),
     t.tarjeta,
     formatCurrency(t.valor),
     t.codEstablecimiento,
+    t.datafonoNoRegistrado ? "**POR DEFINIR**" : (t.marca || "-"),
     t.redAdquirente,
     t.codAutorizacion,
-    t.nombreCentro,
+    t.datafonoNoRegistrado ? "**POR CORREGIR**" : t.nombreCentro,
   ]);
   
   autoTable(doc, {
-    head: [["Fecha", "Tarjeta", "Valor", "Cód. Estab.", "Red Adq.", "Cod. Autorizacion", "Centro"]],
+    head: [["Fecha", "Tarjeta", "Valor", "Cód. Estab.", "Comercio", "Red Adq.", "Cod. Autorizacion", "Centro"]],
     body: tableData,
-    startY: 35,
+    startY: unregisteredCount > 0 ? 40 : 35,
     styles: { fontSize: 8 },
     headStyles: { fillColor: [59, 130, 246] },
+    // Highlight rows with unregistered datafono
+    didParseCell: (data) => {
+      if (data.section === 'body') {
+        const rowIndex = data.row.index;
+        if (transacciones[rowIndex]?.datafonoNoRegistrado) {
+          data.cell.styles.fillColor = [255, 243, 205]; // Light amber background
+          data.cell.styles.textColor = [139, 69, 19]; // Brown text
+        }
+      }
+    },
   });
   
   doc.save(`${filename}.pdf`);

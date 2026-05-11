@@ -21,8 +21,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Header } from "@/components/layout/header";
-import { FileUploadArea } from "@/components/layout/header";
+import { Header, FileUploadArea } from "@/components/layout/header";
 import { useAppStore } from "@/lib/store";
 import {
   importRemanentes,
@@ -73,7 +72,6 @@ export function RemanentesTab() {
   const [anioVencimientoFilter, setAnioVencimientoFilter] = useState<string | undefined>();
   const [currentPage, setCurrentPage] = useState(1);
   const [isImporting, setIsImporting] = useState(false);
-  const [showFilters, setShowFilters] = useState(true);
   const pageSize = 20;
 
   // Extract unique values for filters
@@ -576,12 +574,31 @@ export function RemanentesTab() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 {isImporting ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-4 py-2">
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     <span className="text-sm text-muted-foreground">Importando...</span>
                   </div>
                 ) : (
-                  <FileUploadArea onFileSelect={handleImport} description="Importar mas remanentes" />
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          handleImport(file);
+                          e.target.value = "";
+                        }
+                      }}
+                      className="hidden"
+                    />
+                    <Button variant="outline" size="sm" asChild>
+                      <span>
+                        <Upload className="mr-2 h-4 w-4" />
+                        Importar remanentes
+                      </span>
+                    </Button>
+                  </label>
                 )}
               </div>
               <div className="flex items-center gap-2">
@@ -600,16 +617,11 @@ export function RemanentesTab() {
                     </Tooltip>
                   </TooltipProvider>
                 )}
-                <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
-                  <Filter className="mr-2 h-4 w-4" />
-                  {showFilters ? "Ocultar filtros" : "Mostrar filtros"}
-                </Button>
               </div>
             </div>
 
-            {/* Filters Section */}
-            {showFilters && (
-              <Card className="border-border bg-card">
+            {/* Filters Section - Always visible */}
+            <Card className="border-border bg-card">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="flex items-center gap-2 text-sm font-medium">
@@ -769,7 +781,6 @@ export function RemanentesTab() {
                   </div>
                 </CardContent>
               </Card>
-            )}
 
             {/* Table */}
             <Card className="border-border bg-card">

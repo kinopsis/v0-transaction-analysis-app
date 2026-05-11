@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { Header } from "@/components/layout/header";
 import { KPICards } from "./kpi-cards";
 import { MonthlyChart } from "./monthly-chart";
+import { TransactionsChart } from "./transactions-chart";
+import { TopMarcasChart } from "./top-marcas-chart";
 import { useAppStore } from "@/lib/store";
 import {
   importTransacciones,
@@ -200,7 +202,16 @@ export function DashboardTab() {
         {/* KPI Cards */}
         <KPICards data={kpis} />
 
-        {/* Monthly Chart */}
+        {/* Charts Grid */}
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          {/* Transactions by Day Chart */}
+          <TransactionsChart transacciones={filteredTransacciones} />
+
+          {/* Top 10 Brands Chart */}
+          <TopMarcasChart transacciones={filteredTransacciones} />
+        </div>
+
+        {/* Monthly Trend Chart */}
         <div className="mt-6">
           <MonthlyChart
             data={monthlyData}
