@@ -5,7 +5,7 @@ import { Plus, Trash2, Upload, Download, Save, History, Search, RefreshCw } from
 import { toast } from "sonner";
 import { Header } from "@/components/layout/header";
 import { useAppStore } from "@/lib/store";
-import { importDatafonos, generateId, formatCurrency, formatDate } from "@/lib/data-utils";
+import { importDatafonos, generateId, formatCurrency, formatDate, validateCodEstablecimiento, normalizeCodEstablecimiento } from "@/lib/data-utils";
 import { exportDatafonosCSV } from "@/lib/export-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,12 +80,20 @@ export function ConfigTab() {
       return;
     }
 
+    // Normalize and validate: código de establecimiento must be exactly 8 numeric digits.
+    // This value is the "número de datáfono" and must match exactly the
+    // "Código establecimiento" column in transaction CSV files.
+    const codNormalized = normalizeCodEstablecimiento(newDatafono.codEstablecimiento);
+    if (!validateCodEstablecimiento(codNormalized)) {
+      toast.error("Código de establecimiento inválido", {
+        description:
+          "El número de datáfono debe ser exactamente 8 dígitos numéricos (ej: 12345678). Este código debe coincidir con la columna 'Código establecimiento' en los archivos de transacciones.",
+      });
+      return;
+    }
+
     // Check if already exists
-    if (
-      state.datafonos.some(
-        (d) => d.codEstablecimiento === newDatafono.codEstablecimiento
-      )
-    ) {
+    if (state.datafonos.some((d) => d.codEstablecimiento === codNormalized)) {
       toast.error("Este código de establecimiento ya está registrado");
       return;
     }
@@ -94,7 +102,7 @@ export function ConfigTab() {
       type: "ADD_DATAFONOS",
       payload: [
         {
-          codEstablecimiento: newDatafono.codEstablecimiento,
+          codEstablecimiento: codNormalized,
           nombreComercio: newDatafono.nombreComercio || undefined,
           marca: newDatafono.marca || undefined,
           centroId: newDatafono.centroId,
@@ -103,7 +111,9 @@ export function ConfigTab() {
     });
 
     setNewDatafono({ codEstablecimiento: "", nombreComercio: "", marca: "", centroId: "" });
-    toast.success("Datáfono agregado correctamente");
+    toast.success("Datáfono agregado correctamente", {
+      description: `Código de establecimiento: ${codNormalized}`,
+    });
   };
 
   const handleDeleteDatafono = (codEstablecimiento: string) => {
@@ -251,18 +261,23 @@ export function ConfigTab() {
                 <CardTitle className="text-base">Agregar Datáfono</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex items-end gap-4">
-                  <div className="w-36 shrink-0">
+                <div className="flex flex-col gap-4">
+                  <p className="text-xs text-muted-foreground">
+                    El <span className="font-semibold text-foreground">Cód. Establecimiento</span> es el número de datáfono (8 dígitos numéricos). Debe coincidir exactamente con la columna <span className="font-mono font-semibold text-foreground">"Código establecimiento"</span> en los archivos CSV de transacciones.
+                  </p>
+                  <div className="flex items-end gap-4">
+                  <div className="w-40 shrink-0">
                     <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                      Cód. Establecimiento *
+                      Cód. Establecimiento * <span className="text-muted-foreground">(8 dígitos)</span>
                     </label>
                     <Input
                       placeholder="12345678"
+                      maxLength={8}
                       value={newDatafono.codEstablecimiento}
                       onChange={(e) =>
                         setNewDatafono({
                           ...newDatafono,
-                          codEstablecimiento: e.target.value.trim(),
+                          codEstablecimiento: e.target.value.replace(/\D/g, "").slice(0, 8),
                         })
                       }
                       className="bg-secondary font-mono"
@@ -307,6 +322,7 @@ export function ConfigTab() {
                     <Plus className="mr-2 h-4 w-4" />
                     Agregar
                   </Button>
+                </div>
                 </div>
               </CardContent>
             </Card>

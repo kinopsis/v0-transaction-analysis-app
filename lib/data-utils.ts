@@ -63,10 +63,92 @@ export function normalizeCodEstablecimiento(cod: string): string {
   return cleaned;
 }
 
-// Validate tarjeta number (12 digits)
+// Validate tarjeta number (12-16 digits for prepaid cards)
 export function validateTarjeta(tarjeta: string): boolean {
   const cleaned = tarjeta?.toString().replace(/[^0-9]/g, "") || "";
-  return cleaned.length >= 12;
+  return cleaned.length >= 12 && cleaned.length <= 19;
+}
+
+// Parse a date in various formats: YYYY-MM-DD, DD/MM/YYYY, YYYYMMDD
+export function parseDateFlexible(
+  dateStr: string
+): { fecha: string; year: number; month: number; day: number } | null {
+  if (!dateStr) return null;
+  const cleaned = dateStr.toString().trim();
+
+  // Format: YYYY-MM-DD
+  const isoMatch = cleaned.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoMatch) {
+    const [, y, m, d] = isoMatch;
+    const year = parseInt(y, 10);
+    const month = parseInt(m, 10);
+    const day = parseInt(d, 10);
+    if (year >= 2000 && year <= 2100 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return {
+        fecha: `${year}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`,
+        year,
+        month,
+        day,
+      };
+    }
+  }
+
+  // Format: DD/MM/YYYY
+  const dmyMatch = cleaned.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dmyMatch) {
+    const [, d, m, y] = dmyMatch;
+    const year = parseInt(y, 10);
+    const month = parseInt(m, 10);
+    const day = parseInt(d, 10);
+    if (year >= 2000 && year <= 2100 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return {
+        fecha: `${year}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`,
+        year,
+        month,
+        day,
+      };
+    }
+  }
+
+  // Format: YYYYMMDD (numeric)
+  const numericCleaned = cleaned.replace(/[^0-9]/g, "");
+  if (numericCleaned.length === 8) {
+    const year = parseInt(numericCleaned.substring(0, 4), 10);
+    const month = parseInt(numericCleaned.substring(4, 6), 10);
+    const day = parseInt(numericCleaned.substring(6, 8), 10);
+    if (year >= 2000 && year <= 2100 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return {
+        fecha: `${year}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`,
+        year,
+        month,
+        day,
+      };
+    }
+  }
+
+  return null;
+}
+
+// Parse currency values like "100.000,00" or "$100,000.00" or "$ 19,210.00 "
+export function parseCurrencyValue(raw: unknown): number {
+  if (typeof raw === "number") return raw;
+  const str = String(raw ?? "").trim();
+  if (!str || str === "$ -" || str === "-") return 0;
+
+  // Remove currency symbols, spaces, and non-numeric chars except . and ,
+  let cleaned = str.replace(/[$\s]/g, "").trim();
+
+  // Handle European format: "100.000,00" → "100000.00"
+  if (/^\d{1,3}(\.\d{3})*(,\d+)?$/.test(cleaned)) {
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  }
+  // Handle US format with commas: "100,000.00" → "100000.00"
+  else if (/^\d{1,3}(,\d{3})*(\.\d+)?$/.test(cleaned)) {
+    cleaned = cleaned.replace(/,/g, "");
+  }
+
+  const value = parseFloat(cleaned);
+  return isNaN(value) ? 0 : value;
 }
 
 // Normalize a string for flexible centro name matching
@@ -184,9 +266,11 @@ export async function parseFile(file: File): Promise<Record<string, unknown>[]> 
 }
 
 // Import transactions from file
-// Key rule: "Código establecimiento" in the CSV must match exactly the
-// "Datáfono" (= codEstablecimiento) registered in Configuracion → Datafonos.
-// Both are always 8-digit numeric identifiers.
+// Key rule: "Código establecimiento" in the CSV (column 17, 8 numeric digits) must match
+// exactly the "Datáfono" (= codEstablecimiento) registered in Configuracion → Datafonos.
+// Both identifiers are always 8-digit numeric values — they are the same field.
+// "Nro dispositivo" is a separate alphanumeric terminal identifier and is NOT the same
+// as the código de establecimiento.
 export async function importTransacciones(
   file: File,
   datafonos: Datafono[],
@@ -198,6 +282,8 @@ export async function importTransacciones(
   errors: ImportError[];
   duplicates: number;
   unregisteredCodes: string[];
+  /** Rows rejected because their Código establecimiento is not registered as a Datáfono */
+  rejectedUnregistered: number;
 }> {
   const rows = await parseFile(file);
   const transacciones: Transaccion[] = [];
@@ -210,17 +296,22 @@ export async function importTransacciones(
   // Track keys within this import batch to avoid intra-file duplicates
   const batchKeys = new Set<string>();
   let duplicates = 0;
+  let rejectedUnregistered = 0;
 
   // Track códigos de establecimiento that are not registered in Configuracion
   const unregisteredSet = new Set<string>();
 
-  // Build a Set of all registered codEstablecimiento for O(1) lookup
-  const registeredCodes = new Set(datafonos.map((d) => d.codEstablecimiento));
+  // Build a Map of all registered codEstablecimiento → Datafono for O(1) lookup
+  // Rule: "Nro dispositivo del datafono importado en la configuración = Código establecimiento"
+  // Both are exactly 8 numeric digits and must match exactly.
+  const registeredDatafonoMap = new Map(
+    datafonos.map((d) => [d.codEstablecimiento, d])
+  );
 
   rows.forEach((row, index) => {
     const fila = index + 2; // Account for header row
 
-    // --- Device number (terminal identifier, alphanumeric) ---
+    // --- Device number (alphanumeric terminal identifier — NOT the codEstablecimiento) ---
     const nroDispositivo = String(
       row["Nro dispositivo"] || row["nro_dispositivo"] || row["NroDispositivo"] || ""
     ).trim();
@@ -244,8 +335,9 @@ export async function importTransacciones(
       row["Red adquirente"] || row["red_adquirente"] || row["RedAdquirente"] || ""
     ).trim();
 
-    // --- Código de establecimiento (primary key — links to Datafono.codEstablecimiento) ---
-    // Normalize: strip spaces, zero-pad to 8 digits if purely numeric
+    // --- Código de establecimiento ---
+    // PRIMARY KEY that must match Datafono.codEstablecimiento exactly (8 numeric digits).
+    // This is the "identificador del datafono" registered in Configuracion.
     const rawCodEstablecimiento = String(
       row["Código establecimiento"] ||
         row["Codigo establecimiento"] ||
@@ -286,6 +378,7 @@ export async function importTransacciones(
     }
 
     // VALIDATION 2: Código establecimiento must be exactly 8 numeric digits
+    // This is the "datafono number" used in configuration and must always be 8 digits.
     if (!validateCodEstablecimiento(codEstablecimiento)) {
       errors.push({
         fila,
@@ -293,8 +386,8 @@ export async function importTransacciones(
         valor: rawCodEstablecimiento,
         mensaje:
           codEstablecimiento.length === 0
-            ? "El código de establecimiento es requerido"
-            : `El código "${rawCodEstablecimiento}" no es válido (debe ser exactamente 8 dígitos numéricos)`,
+            ? "El código de establecimiento es requerido (debe ser exactamente 8 dígitos numéricos)"
+            : `El código "${rawCodEstablecimiento}" no es válido — debe ser exactamente 8 dígitos numéricos, igual al número de datáfono registrado en Configuración`,
       });
       return;
     }
@@ -319,9 +412,15 @@ export async function importTransacciones(
     }
     batchKeys.add(compositeKey);
 
-    // CONSISTENCY CHECK: Track códigos de establecimiento not registered in Configuracion
-    if (!registeredCodes.has(codEstablecimiento)) {
+    // VALIDATION 5 — DATAFONO CORRESPONDENCE CHECK:
+    // The "Código establecimiento" (8-digit) in the CSV should correspond to a
+    // Datáfono registered in Configuración. If not, we still import the transaction
+    // but mark it with datafonoNoRegistrado = true so it can be highlighted in the UI
+    // for manual correction.
+    const isDatafonoRegistered = registeredDatafonoMap.has(codEstablecimiento);
+    if (!isDatafonoRegistered) {
       unregisteredSet.add(codEstablecimiento);
+      rejectedUnregistered++; // Track count for reporting (now "flagged" not "rejected")
     }
 
     // Parse value
@@ -351,6 +450,7 @@ export async function importTransacciones(
       nombreCentro,
       mes: dateResult.mes,
       anio: dateResult.anio,
+      datafonoNoRegistrado: !isDatafonoRegistered,
     });
   });
 
@@ -359,47 +459,233 @@ export async function importTransacciones(
     errors,
     duplicates,
     unregisteredCodes: Array.from(unregisteredSet),
+    rejectedUnregistered,
   };
 }
 
 // Import remanentes from file
+// Supports CSV format with columns:
+// Monto, # Tarjeta, Saldo Final, Estado, Saldo no devuelto, Fecha Venta,
+// Fecha Vencimiento, Fecha Vencimiento (+1 día), Reposición?, Id, Subtipo, Saldo
 export async function importRemanentes(
   file: File,
-  archivoId: string
-): Promise<{ remanentes: Remanente[]; errors: ImportError[] }> {
+  archivoId: string,
+  existingRemanentes: Remanente[] = []
+): Promise<{
+  remanentes: Remanente[];
+  errors: ImportError[];
+  duplicates: number;
+  summary: {
+    total: number;
+    imported: number;
+    porSolicitar: number;
+    vendidas: number;
+    otrosEstados: number;
+  };
+}> {
   const rows = await parseFile(file);
   const remanentes: Remanente[] = [];
   const errors: ImportError[] = [];
-  
+
+  // Build a set of existing tarjeta+idOrigen combinations to detect duplicates
+  const existingKeys = new Set(
+    existingRemanentes.map((r) => `${r.tarjeta}|${r.idOrigen}`)
+  );
+  const batchKeys = new Set<string>();
+  let duplicates = 0;
+
+  // Summary counters
+  let porSolicitar = 0;
+  let vendidas = 0;
+  let otrosEstados = 0;
+
   rows.forEach((row, index) => {
-    const fila = index + 2;
-    
-    const montoRaw = row["Monto"] || row["monto"] || 0;
-    const tarjeta = String(row["Tarjeta"] || row["tarjeta"] || "").trim();
-    const idOrigen = String(row["Id origen"] || row["id_origen"] || row["IdOrigen"] || "").trim();
+    const fila = index + 2; // Account for header row
+
+    // --- Monto (descriptive text like "cien mil pesos") ---
+    const montoDescriptivo = String(row["Monto"] || row["monto"] || "").trim();
+
+    // --- # Tarjeta (16-digit card number) ---
+    const tarjetaRaw = String(
+      row["# Tarjeta"] || row["Tarjeta"] || row["tarjeta"] || ""
+    ).trim();
+    const tarjeta = tarjetaRaw.replace(/[^0-9]/g, "");
+
+    // --- Saldo Final (e.g. "100.000,00") ---
+    const saldoFinal = parseCurrencyValue(
+      row["Saldo Final"] || row["saldo_final"] || row["SaldoFinal"] || 0
+    );
+
+    // --- Estado ---
+    const estado = String(
+      row["Estado"] || row["estado"] || ""
+    ).trim();
+
+    // --- Saldo no devuelto ---
+    const saldoNoDevuelto = parseCurrencyValue(
+      row["Saldo no devuelto"] ||
+        row["saldo_no_devuelto"] ||
+        row["SaldoNoDevuelto"] ||
+        0
+    );
+
+    // --- Fecha Venta (YYYY-MM-DD format) ---
+    const fechaVentaRaw = String(
+      row["Fecha Venta"] || row["fecha_venta"] || row["FechaVenta"] || ""
+    ).trim();
+
+    // --- Fecha Vencimiento ---
+    const fechaVencimientoRaw = String(
+      row["Fecha Vencimiento"] ||
+        row["fecha_vencimiento"] ||
+        row["FechaVencimiento"] ||
+        ""
+    ).trim();
+
+    // --- Fecha Vencimiento (+1 día) ---
+    const fechaVencimientoMasUnoRaw = String(
+      row["Fecha Vencimiento (+1 día)"] ||
+        row["Fecha Vencimiento (+1 dia)"] ||
+        row["fecha_vencimiento_mas_uno"] ||
+        ""
+    ).trim();
+
+    // --- Reposición? ---
+    const reposicionRaw = String(
+      row["Reposición?"] || row["Reposicion?"] || row["reposicion"] || "No"
+    ).trim();
+    const reposicion =
+      reposicionRaw.toLowerCase() === "si" ||
+      reposicionRaw.toLowerCase() === "sí" ||
+      reposicionRaw.toLowerCase() === "yes" ||
+      reposicionRaw === "1";
+
+    // --- Id (origen) ---
+    const idOrigen = String(
+      row["Id"] || row["id"] || row["Id origen"] || row["id_origen"] || ""
+    ).trim();
+
+    // --- Subtipo ---
     const subtipo = String(row["Subtipo"] || row["subtipo"] || "").trim();
-    const saldoRaw = row["Saldo"] || row["saldo"] || 0;
-    
-    const monto = typeof montoRaw === "number"
-      ? montoRaw
-      : parseFloat(String(montoRaw).replace(/[^0-9.-]/g, "")) || 0;
-    
-    const saldo = typeof saldoRaw === "number"
-      ? saldoRaw
-      : parseFloat(String(saldoRaw).replace(/[^0-9.-]/g, "")) || 0;
-    
+
+    // --- Saldo (current balance with currency symbols like "$ 100.00") ---
+    const saldo = parseCurrencyValue(
+      row[" Saldo "] || row["Saldo"] || row["saldo"] || 0
+    );
+
+    // VALIDATION 1: Tarjeta must be 16 digits
+    if (!validateTarjeta(tarjeta) || tarjeta.length < 16) {
+      errors.push({
+        fila,
+        campo: "# Tarjeta",
+        valor: tarjetaRaw,
+        mensaje: `El número de tarjeta "${tarjetaRaw}" no es válido (debe ser 16 dígitos numéricos)`,
+      });
+      return;
+    }
+
+    // VALIDATION 2: Id Origen is required
+    if (!idOrigen) {
+      errors.push({
+        fila,
+        campo: "Id",
+        valor: idOrigen,
+        mensaje: "El ID de origen es requerido",
+      });
+      return;
+    }
+
+    // VALIDATION 3: Fecha Venta must be valid
+    const fechaVentaParsed = parseDateFlexible(fechaVentaRaw);
+    if (!fechaVentaParsed) {
+      errors.push({
+        fila,
+        campo: "Fecha Venta",
+        valor: fechaVentaRaw,
+        mensaje: `La fecha de venta "${fechaVentaRaw}" no es válida (esperado: YYYY-MM-DD)`,
+      });
+      return;
+    }
+
+    // VALIDATION 4: Fecha Vencimiento must be valid
+    const fechaVencimientoParsed = parseDateFlexible(fechaVencimientoRaw);
+    if (!fechaVencimientoParsed) {
+      errors.push({
+        fila,
+        campo: "Fecha Vencimiento",
+        valor: fechaVencimientoRaw,
+        mensaje: `La fecha de vencimiento "${fechaVencimientoRaw}" no es válida (esperado: YYYY-MM-DD)`,
+      });
+      return;
+    }
+
+    // VALIDATION 5: Estado must be non-empty
+    if (!estado) {
+      errors.push({
+        fila,
+        campo: "Estado",
+        valor: estado,
+        mensaje: "El estado es requerido",
+      });
+      return;
+    }
+
+    // VALIDATION 6: Duplicate check using tarjeta + idOrigen as composite key
+    const compositeKey = `${tarjeta}|${idOrigen}`;
+    if (existingKeys.has(compositeKey) || batchKeys.has(compositeKey)) {
+      duplicates++;
+      return;
+    }
+    batchKeys.add(compositeKey);
+
+    // Parse optional fecha vencimiento +1
+    const fechaVencimientoMasUnoParsed = parseDateFlexible(
+      fechaVencimientoMasUnoRaw
+    );
+
+    // Track estado distribution
+    const estadoLower = estado.toLowerCase();
+    if (estadoLower.includes("por solicitar")) {
+      porSolicitar++;
+    } else if (estadoLower.includes("vendida")) {
+      vendidas++;
+    } else {
+      otrosEstados++;
+    }
+
+    // Calculate monto from saldoFinal if not a numeric value
+    const monto = saldoFinal > 0 ? saldoFinal : saldoNoDevuelto;
+
     remanentes.push({
       id: generateId(),
       monto,
-      tarjeta: tarjeta.replace(/[^0-9]/g, ""),
+      tarjeta,
+      saldoFinal,
+      estado,
+      saldoNoDevuelto,
+      fechaVenta: fechaVentaParsed.fecha,
+      fechaVencimiento: fechaVencimientoParsed.fecha,
+      fechaVencimientoMasUno: fechaVencimientoMasUnoParsed?.fecha || "",
+      reposicion,
       idOrigen,
       subtipo,
       saldo,
       archivoId,
     });
   });
-  
-  return { remanentes, errors };
+
+  return {
+    remanentes,
+    errors,
+    duplicates,
+    summary: {
+      total: rows.length,
+      imported: remanentes.length,
+      porSolicitar,
+      vendidas,
+      otrosEstados,
+    },
+  };
 }
 
 // Import datáfonos from CSV

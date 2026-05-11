@@ -144,14 +144,20 @@ export function exportComisionesPDF(comisiones: ComisionReporte[], filename: str
   doc.save(`${filename}.pdf`);
 }
 
-// Export remanentes to Excel
+// Export remanentes to Excel (with all new fields)
 export function exportRemanentesExcel(remanentes: Remanente[], filename: string) {
   const data = remanentes.map((r) => ({
-    "Monto": r.monto,
     "Tarjeta": r.tarjeta,
+    "Estado": r.estado,
+    "Saldo Final": r.saldoFinal,
+    "Saldo No Devuelto": r.saldoNoDevuelto,
+    "Fecha Venta": r.fechaVenta,
+    "Fecha Vencimiento": r.fechaVencimiento,
+    "Fecha Vencimiento +1": r.fechaVencimientoMasUno,
+    "Reposición": r.reposicion ? "Sí" : "No",
     "ID Origen": r.idOrigen,
     "Subtipo": r.subtipo,
-    "Saldo": r.saldo,
+    "Saldo Actual": r.saldo,
   }));
   
   const ws = XLSX.utils.json_to_sheet(data);
@@ -160,9 +166,9 @@ export function exportRemanentesExcel(remanentes: Remanente[], filename: string)
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
-// Export remanentes to PDF
+// Export remanentes to PDF (with all new fields)
 export function exportRemanentesPDF(remanentes: Remanente[], filename: string) {
-  const doc = new jsPDF();
+  const doc = new jsPDF("landscape");
   
   doc.setFontSize(16);
   doc.text("Reporte de Remanentes", 14, 15);
@@ -170,19 +176,53 @@ export function exportRemanentesPDF(remanentes: Remanente[], filename: string) {
   doc.text(`Generado: ${new Date().toLocaleDateString("es-CO")}`, 14, 22);
   doc.text(`Total: ${remanentes.length} remanentes`, 14, 28);
   
+  // Summary stats
+  const porSolicitar = remanentes.filter((r) =>
+    r.estado.toLowerCase().includes("por solicitar")
+  ).length;
+  const vendidas = remanentes.filter((r) =>
+    r.estado.toLowerCase().includes("vendida")
+  ).length;
+  const totalSaldoNoDevuelto = remanentes.reduce(
+    (sum, r) => sum + (r.saldoNoDevuelto || 0),
+    0
+  );
+  
+  doc.text(
+    `Por solicitar: ${porSolicitar} | Vendidas: ${vendidas} | Total saldo no devuelto: ${formatCurrency(totalSaldoNoDevuelto)}`,
+    14,
+    34
+  );
+  
   const tableData = remanentes.map((r) => [
-    formatCurrency(r.monto),
-    r.tarjeta,
+    `${r.tarjeta.slice(0, 4)}****${r.tarjeta.slice(-4)}`,
+    r.estado,
+    formatCurrency(r.saldoFinal),
+    formatCurrency(r.saldoNoDevuelto),
+    r.fechaVenta,
+    r.fechaVencimiento,
     r.idOrigen,
     r.subtipo,
-    formatCurrency(r.saldo),
+    r.saldo > 0 ? formatCurrency(r.saldo) : "-",
   ]);
   
   autoTable(doc, {
-    head: [["Monto", "Tarjeta", "ID Origen", "Subtipo", "Saldo"]],
+    head: [
+      [
+        "Tarjeta",
+        "Estado",
+        "Saldo Final",
+        "Saldo No Dev.",
+        "F. Venta",
+        "F. Venc.",
+        "ID Origen",
+        "Subtipo",
+        "Saldo",
+      ],
+    ],
     body: tableData,
-    startY: 35,
-    styles: { fontSize: 9 },
+    startY: 40,
+    styles: { fontSize: 7 },
     headStyles: { fillColor: [59, 130, 246] },
   });
   

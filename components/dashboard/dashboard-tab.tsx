@@ -50,14 +50,19 @@ export function DashboardTab() {
   const handleImport = async (file: File) => {
     try {
       const archivoId = generateId();
-      const { transacciones, errors, duplicates, unregisteredCodes } =
-        await importTransacciones(
-          file,
-          state.datafonos,
-          state.centros,
-          archivoId,
-          state.transacciones
-        );
+      const {
+        transacciones,
+        errors,
+        duplicates,
+        unregisteredCodes,
+        rejectedUnregistered,
+      } = await importTransacciones(
+        file,
+        state.datafonos,
+        state.centros,
+        archivoId,
+        state.transacciones
+      );
 
       if (transacciones.length > 0) {
         dispatch({ type: "ADD_TRANSACCIONES", payload: transacciones });
@@ -75,10 +80,12 @@ export function DashboardTab() {
         });
 
         const descParts: string[] = [];
-        if (errors.length > 0)
-          descParts.push(`${errors.length} filas con errores omitidas`);
         if (duplicates > 0)
           descParts.push(`${duplicates} duplicados ignorados`);
+        if (rejectedUnregistered > 0)
+          descParts.push(
+            `${rejectedUnregistered} transacciones con datafono no registrado (resaltadas)`
+          );
 
         toast.success(
           `${transacciones.length} transacciones importadas correctamente`,
@@ -96,25 +103,28 @@ export function DashboardTab() {
           });
         }
 
-        // Warn about códigos de establecimiento not registered in Configuracion
+        // Warn (not error) about unregistered datafono codes - transactions ARE imported but flagged
         if (unregisteredCodes.length > 0) {
-          const sample = unregisteredCodes.slice(0, 3).join(", ");
+          const sample = unregisteredCodes.slice(0, 5).join(", ");
           const extra =
-            unregisteredCodes.length > 3
-              ? ` y ${unregisteredCodes.length - 3} más`
+            unregisteredCodes.length > 5
+              ? ` y ${unregisteredCodes.length - 5} mas`
               : "";
           toast.warning(
-            `${unregisteredCodes.length} código(s) de establecimiento sin datáfono registrado`,
+            `${rejectedUnregistered} transaccion(es) con datafono no registrado`,
             {
-              description: `Códigos no encontrados en Configuración → Datáfonos: ${sample}${extra}. Registra estos datáfonos para sincronizar el centro comercial correctamente.`,
-              duration: 8000,
+              description: `Los codigos: ${sample}${extra} no coinciden con ningun datafono en Configuracion. Estas transacciones se importaron pero estan resaltadas en la tabla para correccion manual.`,
+              duration: 10000,
             }
           );
         }
-      } else if (duplicates > 0) {
-        toast.warning("Todas las transacciones del archivo ya están registradas", {
-          description: `${duplicates} duplicados detectados por Cod. Autorización + Fecha`,
-        });
+      } else if (duplicates > 0 && transacciones.length === 0) {
+        toast.warning(
+          "Todas las transacciones del archivo ya están registradas",
+          {
+            description: `${duplicates} duplicados detectados por Cod. Autorización + Fecha`,
+          }
+        );
       } else {
         toast.error("No se pudieron importar transacciones", {
           description:

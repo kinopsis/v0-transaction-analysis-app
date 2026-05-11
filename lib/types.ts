@@ -35,18 +35,38 @@ export interface Transaccion {
   nombreCentro: string;
   mes: number;
   anio: number;
+  /** Flag: true if the codEstablecimiento does not match any registered Datafono */
+  datafonoNoRegistrado?: boolean;
 }
 
-// Remanente
+// Remanente (prepaid card remainder/refund record)
 export interface Remanente {
   id: string;
   monto: number;
   tarjeta: string;
+  saldoFinal: number;
+  estado: string;
+  saldoNoDevuelto: number;
+  fechaVenta: string;
+  fechaVencimiento: string;
+  fechaVencimientoMasUno: string;
+  reposicion: boolean;
   idOrigen: string;
   subtipo: string;
   saldo: number;
   archivoId: string;
 }
+
+// Estado values for Remanentes
+export const REMANENTE_ESTADOS = [
+  "Remanente por solicitar",
+  "Vendida",
+  "Solicitado",
+  "Pagado",
+  "Cancelado",
+] as const;
+
+export type RemanenteEstado = (typeof REMANENTE_ESTADOS)[number];
 
 // Import log
 export interface ArchivoImportado {
