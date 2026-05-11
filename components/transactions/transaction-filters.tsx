@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { CentroComercial, FilterState } from "@/lib/types";
-import { SUBTIPOS, MESES, YEARS } from "@/lib/constants";
+import { MESES, YEARS } from "@/lib/constants";
 
 interface TransactionFiltersProps {
   filters: FilterState;
@@ -36,7 +36,7 @@ export function TransactionFilters({
       centroIds: [],
       fechaInicio: undefined,
       fechaFin: undefined,
-      subtipo: undefined,
+      redAdquirente: undefined,
       nroDispositivo: undefined,
       codEstablecimiento: undefined,
       tarjeta: undefined,
@@ -49,7 +49,7 @@ export function TransactionFilters({
     filters.centroIds.length > 0 ||
     filters.fechaInicio ||
     filters.fechaFin ||
-    filters.subtipo ||
+    filters.redAdquirente ||
     filters.nroDispositivo ||
     filters.codEstablecimiento ||
     filters.tarjeta ||
@@ -144,29 +144,22 @@ export function TransactionFilters({
           </Select>
         </div>
 
-        {/* Subtipo */}
+        {/* Red Adquirente */}
         <div>
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-            Subtipo
+            Red Adquirente
           </label>
-          <Select
-            value={filters.subtipo || "all"}
-            onValueChange={(v) =>
-              updateFilter("subtipo", v === "all" ? undefined : v)
-            }
-          >
-            <SelectTrigger className="bg-secondary">
-              <SelectValue placeholder="Todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              {SUBTIPOS.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar..."
+              value={filters.redAdquirente || ""}
+              onChange={(e) =>
+                updateFilter("redAdquirente", e.target.value || undefined)
+              }
+              className="bg-secondary pl-8"
+            />
+          </div>
         </div>
 
         {/* Código Establecimiento */}

@@ -68,10 +68,9 @@ export function TransactionTable({
               <TableHead className="text-right">Valor</TableHead>
               <TableHead>Cód. Establecimiento</TableHead>
               <TableHead>Nombre Comercio</TableHead>
-              <TableHead>Subtipo</TableHead>
+              <TableHead>Red Adquirente</TableHead>
               <TableHead>Centro</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead>Comprobante</TableHead>
+              <TableHead>Cod. Autorización</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -81,7 +80,7 @@ export function TransactionTable({
                   {formatDate(t.fecha)}
                 </TableCell>
                 <TableCell className="font-mono text-xs">
-                  {t.tarjeta.slice(0, 4)}****{t.tarjeta.slice(-4)}
+                  {t.tarjeta}
                 </TableCell>
                 <TableCell className="text-right font-medium">
                   {formatCurrency(t.valor)}
@@ -92,11 +91,10 @@ export function TransactionTable({
                 <TableCell className="max-w-40 truncate text-sm" title={t.marca || ""}>
                   {t.marca || "-"}
                 </TableCell>
-                <TableCell className="text-sm">{t.subtipo}</TableCell>
+                <TableCell className="text-sm">{t.redAdquirente}</TableCell>
                 <TableCell className="text-sm">{t.nombreCentro}</TableCell>
-                <TableCell className="text-sm">{t.estado}</TableCell>
                 <TableCell className="font-mono text-xs">
-                  {t.comprobante}
+                  {t.codAutorizacion}
                 </TableCell>
               </TableRow>
             ))}

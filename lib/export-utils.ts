@@ -12,10 +12,9 @@ export function exportTransaccionesExcel(transacciones: Transaccion[], filename:
     "Valor": t.valor,
     "Datáfono": t.nroDispositivo,
     "Nombre Comercio": t.marca || "",
-    "Subtipo": t.subtipo,
+    "Red Adquirente": t.redAdquirente,
     "Cod Establecimiento": t.codEstablecimiento,
-    "Estado": t.estado,
-    "Comprobante": t.comprobante,
+    "Cod. Autorización": t.codAutorizacion,
     "Centro Comercial": t.nombreCentro,
   }));
   
@@ -39,13 +38,14 @@ export function exportTransaccionesPDF(transacciones: Transaccion[], filename: s
     formatDate(t.fecha),
     t.tarjeta,
     formatCurrency(t.valor),
-    t.nroDispositivo,
-    t.subtipo,
+    t.codEstablecimiento,
+    t.redAdquirente,
+    t.codAutorizacion,
     t.nombreCentro,
   ]);
   
   autoTable(doc, {
-    head: [["Fecha", "Tarjeta", "Valor", "Datáfono", "Subtipo", "Centro"]],
+    head: [["Fecha", "Tarjeta", "Valor", "Cód. Estab.", "Red Adq.", "Cod. Autorizacion", "Centro"]],
     body: tableData,
     startY: 35,
     styles: { fontSize: 8 },
