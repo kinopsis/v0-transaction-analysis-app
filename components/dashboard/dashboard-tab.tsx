@@ -19,15 +19,7 @@ import {
   getPeriodString,
 } from "@/lib/data-utils";
 import { exportDashboardToPdf } from "@/lib/pdf-export";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -166,8 +158,8 @@ export function DashboardTab() {
     }
   };
 
-  const handleCentroChange = (centroId: string) => {
-    if (centroId === "all") {
+  const handleCentroChange = (centroId: string | undefined) => {
+    if (!centroId) {
       setSelectedCentroIds([]);
     } else {
       setSelectedCentroIds([centroId]);
@@ -201,12 +193,14 @@ export function DashboardTab() {
       await exportDashboardToPdf({
         titulo: "Reporte de Dashboard",
         centroNombre,
+        centroId: selectedCentroIds[0],
         mes: selectedMes,
         anio: selectedAnio,
         fechaGeneracion,
         incluirTransacciones: withTransactions,
-        transacciones: withTransactions ? filteredTransacciones : [],
+        transacciones: withTransactions ? filteredTransacciones : filteredTransacciones,
         chartsContainer: chartsContainerRef.current,
+        centros: state.centros,
       });
 
       toast.success("PDF exportado correctamente", {
@@ -231,6 +225,10 @@ export function DashboardTab() {
         subtitle={`${state.transacciones.length} transacciones cargadas`}
         showImport
         showPeriodFilter
+        showCentroFilter
+        centros={state.centros}
+        selectedCentroId={selectedCentroIds[0]}
+        onCentroChange={handleCentroChange}
         onImport={handleImport}
         selectedMes={selectedMes}
         selectedAnio={selectedAnio}
@@ -239,40 +237,8 @@ export function DashboardTab() {
       />
 
       <div className="flex-1 overflow-auto p-6">
-        {/* Centro filter and Export */}
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-muted-foreground">
-              Centro Comercial:
-            </span>
-            <Select
-              value={selectedCentroIds[0] || "all"}
-              onValueChange={handleCentroChange}
-            >
-              <SelectTrigger className="w-48 bg-secondary">
-                <SelectValue placeholder="Todos los centros" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los centros</SelectItem>
-                {state.centros.map((centro) => (
-                  <SelectItem key={centro.id} value={centro.id}>
-                    {centro.nombre}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {selectedCentroIds.length > 0 && (
-              <Badge
-                variant="secondary"
-                className="cursor-pointer"
-                onClick={() => setSelectedCentroIds([])}
-              >
-                Limpiar filtro
-              </Badge>
-            )}
-          </div>
-
+        {/* Export Button Row */}
+        <div className="mb-6 flex items-center justify-end">
           <Button
             variant="outline"
             onClick={handleExportClick}
