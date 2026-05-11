@@ -5,6 +5,9 @@ import {
   useContext,
   useReducer,
   useEffect,
+  useState,
+  useRef,
+  useCallback,
   type ReactNode,
 } from "react";
 import type {
@@ -16,6 +19,11 @@ import type {
   ArchivoImportado,
 } from "./types";
 import { CENTROS_INICIALES } from "./constants";
+import {
+  saveStateToIndexedDB,
+  loadStateFromIndexedDB,
+  isIndexedDBAvailable,
+} from "./indexed-db-storage";
 
 const STORAGE_KEY = "datafonos-app-state";
 
@@ -134,39 +142,85 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [isLoaded, setIsLoaded] = useState(false);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as AppState;
-        // Merge with initial centros to ensure new centros are added
-        const mergedCentros = CENTROS_INICIALES.map((inicial) => {
-          const stored = parsed.centros.find((c) => c.id === inicial.id);
-          return stored || inicial;
-        });
-        dispatch({
-          type: "SET_STATE",
-          payload: { ...parsed, centros: mergedCentros },
-        });
-      }
-    } catch (error) {
-      console.error("Error loading state from localStorage:", error);
+  // Debounced save function to avoid too many IndexedDB writes
+  const debouncedSave = useCallback((stateToSave: AppState) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
-    setIsLoaded(true);
+    saveTimeoutRef.current = setTimeout(() => {
+      saveStateToIndexedDB(stateToSave).catch(() => {
+        // Silently fail - IndexedDB errors shouldn't break the app
+      });
+    }, 500); // Debounce by 500ms
   }, []);
 
-  // Save to localStorage on state change
+  // Load from IndexedDB on mount (with localStorage fallback for migration)
   useEffect(() => {
-    if (isLoaded) {
+    async function loadState() {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      } catch (error) {
-        console.error("Error saving state to localStorage:", error);
+        // First try IndexedDB
+        if (isIndexedDBAvailable()) {
+          const indexedDBState = await loadStateFromIndexedDB();
+          if (indexedDBState) {
+            // Merge with initial centros to ensure new centros are added
+            const mergedCentros = CENTROS_INICIALES.map((inicial) => {
+              const stored = indexedDBState.centros.find((c) => c.id === inicial.id);
+              return stored || inicial;
+            });
+            dispatch({
+              type: "SET_STATE",
+              payload: { ...indexedDBState, centros: mergedCentros },
+            });
+            setIsLoaded(true);
+            return;
+          }
+        }
+
+        // Fallback: try localStorage (for migration from old storage)
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored) as AppState;
+          // Merge with initial centros
+          const mergedCentros = CENTROS_INICIALES.map((inicial) => {
+            const storedCentro = parsed.centros.find((c) => c.id === inicial.id);
+            return storedCentro || inicial;
+          });
+          const migratedState = { ...parsed, centros: mergedCentros };
+          dispatch({
+            type: "SET_STATE",
+            payload: migratedState,
+          });
+          
+          // Migrate to IndexedDB and clear localStorage
+          if (isIndexedDBAvailable()) {
+            await saveStateToIndexedDB(migratedState);
+            localStorage.removeItem(STORAGE_KEY);
+          }
+        }
+      } catch {
+        // Silently fail - storage errors shouldn't break the app
       }
+      setIsLoaded(true);
     }
-  }, [state, isLoaded]);
+    
+    loadState();
+  }, []);
+
+  // Save to IndexedDB on state change (debounced)
+  useEffect(() => {
+    if (isLoaded && isIndexedDBAvailable()) {
+      debouncedSave(state);
+    }
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [state, isLoaded, debouncedSave]);
 
   return (
     <AppContext.Provider value={{ state, dispatch, isLoaded }}>
@@ -182,6 +236,3 @@ export function useAppStore() {
   }
   return context;
 }
-
-// Need to import useState
-import { useState } from "react";
