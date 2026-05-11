@@ -7,6 +7,7 @@ import { KPICards } from "./kpi-cards";
 import { MonthlyChart } from "./monthly-chart";
 import { TransactionsChart } from "./transactions-chart";
 import { TopMarcasChart } from "./top-marcas-chart";
+import { TopComerciosMontoChart } from "./top-comercios-monto-chart";
 import { useAppStore } from "@/lib/store";
 import {
   importTransacciones,
@@ -212,8 +213,13 @@ export function DashboardTab() {
           {/* Transactions by Day Chart */}
           <TransactionsChart transacciones={filteredTransacciones} />
 
-          {/* Top 10 Brands Chart */}
+          {/* Top 10 Brands by Transaction Count */}
           <TopMarcasChart transacciones={filteredTransacciones} />
+        </div>
+
+        {/* Top 10 Comercios by Volume */}
+        <div className="mt-6">
+          <TopComerciosMontoChart transacciones={filteredTransacciones} />
         </div>
 
         {/* Monthly Trend Chart */}

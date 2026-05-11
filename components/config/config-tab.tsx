@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, Upload, Download, Save, History, Search, RefreshCw } from "lucide-react";
+import { Plus, Trash2, Upload, Download, Save, History, Search, RefreshCw, Pencil, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/header";
 import { useAppStore } from "@/lib/store";
@@ -38,7 +38,16 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import type { Datafono } from "@/lib/types";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import type { Datafono, DatafonoHistoryEntry } from "@/lib/types";
 
 export function ConfigTab() {
   const { state, dispatch } = useAppStore();
@@ -59,6 +68,21 @@ export function ConfigTab() {
   // Editable cuota fija state
   const [editingCuotaFija, setEditingCuotaFija] = useState<string | null>(null);
   const [cuotaFijaValue, setCuotaFijaValue] = useState("");
+
+  // Edit datafono state
+  const [editingDatafono, setEditingDatafono] = useState<Datafono | null>(null);
+  const [editDatafonoForm, setEditDatafonoForm] = useState<{
+    nombreComercio: string;
+    marca: string;
+    centroId: string;
+    fechaEfectiva: string;
+  }>({
+    nombreComercio: "",
+    marca: "",
+    centroId: "",
+    fechaEfectiva: new Date().toISOString().split("T")[0],
+  });
+  const [showHistorial, setShowHistorial] = useState<Datafono | null>(null);
 
   // Filtered datáfonos based on search
   const filteredDatafonos = state.datafonos.filter((d) => {
@@ -119,6 +143,96 @@ export function ConfigTab() {
   const handleDeleteDatafono = (codEstablecimiento: string) => {
     dispatch({ type: "DELETE_DATAFONO", payload: codEstablecimiento });
     toast.success("Datáfono eliminado");
+  };
+
+  const handleOpenEditDatafono = (datafono: Datafono) => {
+    setEditingDatafono(datafono);
+    setEditDatafonoForm({
+      nombreComercio: datafono.nombreComercio || "",
+      marca: datafono.marca || "",
+      centroId: datafono.centroId,
+      fechaEfectiva: new Date().toISOString().split("T")[0],
+    });
+  };
+
+  const handleSaveEditDatafono = () => {
+    if (!editingDatafono) return;
+
+    if (!editDatafonoForm.centroId) {
+      toast.error("Por favor selecciona un centro comercial");
+      return;
+    }
+
+    // Create history entry from current values (before edit)
+    const currentHistoryEntry: DatafonoHistoryEntry = {
+      fechaEfectiva: editDatafonoForm.fechaEfectiva,
+      nombreComercio: editDatafonoForm.nombreComercio || undefined,
+      marca: editDatafonoForm.marca || undefined,
+      centroId: editDatafonoForm.centroId,
+    };
+
+    // Build new historial: keep previous entries + add snapshot of OLD values before edit date
+    const existingHistorial = editingDatafono.historial || [];
+    
+    // Create a snapshot of the previous state for records BEFORE the effective date
+    const previousStateEntry: DatafonoHistoryEntry = {
+      fechaEfectiva: "1900-01-01", // Beginning of time - represents original state
+      nombreComercio: editingDatafono.nombreComercio,
+      marca: editingDatafono.marca,
+      centroId: editingDatafono.centroId,
+    };
+
+    // Only add previous state if historial was empty (first edit)
+    const newHistorial: DatafonoHistoryEntry[] = existingHistorial.length === 0
+      ? [previousStateEntry, currentHistoryEntry]
+      : [...existingHistorial, currentHistoryEntry];
+
+    // Sort by fechaEfectiva
+    newHistorial.sort((a, b) => a.fechaEfectiva.localeCompare(b.fechaEfectiva));
+
+    const updatedDatafono: Datafono = {
+      ...editingDatafono,
+      nombreComercio: editDatafonoForm.nombreComercio || undefined,
+      marca: editDatafonoForm.marca || undefined,
+      centroId: editDatafonoForm.centroId,
+      historial: newHistorial,
+    };
+
+    dispatch({ type: "UPDATE_DATAFONO", payload: updatedDatafono });
+    toast.success("Datáfono actualizado", {
+      description: `Cambios efectivos desde ${formatDate(editDatafonoForm.fechaEfectiva)}. Historial preservado.`,
+    });
+    setEditingDatafono(null);
+  };
+
+  const getDatafonoAtDate = (datafono: Datafono, fecha: string): { nombreComercio?: string; marca?: string; centroId: string } => {
+    if (!datafono.historial || datafono.historial.length === 0) {
+      return {
+        nombreComercio: datafono.nombreComercio,
+        marca: datafono.marca,
+        centroId: datafono.centroId,
+      };
+    }
+
+    // Find the most recent entry that is <= fecha
+    const applicableEntries = datafono.historial.filter(h => h.fechaEfectiva <= fecha);
+    if (applicableEntries.length === 0) {
+      // No history applies, use first entry
+      const first = datafono.historial[0];
+      return {
+        nombreComercio: first.nombreComercio,
+        marca: first.marca,
+        centroId: first.centroId,
+      };
+    }
+
+    // Get the most recent applicable entry
+    const latestApplicable = applicableEntries[applicableEntries.length - 1];
+    return {
+      nombreComercio: latestApplicable.nombreComercio,
+      marca: latestApplicable.marca,
+      centroId: latestApplicable.centroId,
+    };
   };
 
   const handleImportDatafonos = async (
@@ -190,7 +304,7 @@ export function ConfigTab() {
     toast.success("Archivo y sus datos eliminados");
   };
 
-  // Sync transactions with updated datafono information
+  // Sync transactions with updated datafono information (using historical data)
   const handleSyncTransactions = () => {
     if (state.transacciones.length === 0) {
       toast.info("No hay transacciones para sincronizar");
@@ -204,9 +318,11 @@ export function ConfigTab() {
         (d) => d.codEstablecimiento === t.codEstablecimiento
       );
       if (datafono) {
-        const centro = state.centros.find((c) => c.id === datafono.centroId);
-        const newMarca = datafono.nombreComercio || datafono.marca;
-        const newCentroId = datafono.centroId;
+        // Use historical data based on transaction date
+        const datafonoData = getDatafonoAtDate(datafono, t.fecha);
+        const centro = state.centros.find((c) => c.id === datafonoData.centroId);
+        const newMarca = datafonoData.nombreComercio || datafonoData.marca;
+        const newCentroId = datafonoData.centroId;
         const newNombreCentro = centro?.nombre || "Desconocido";
 
         // Check if there are changes
@@ -231,7 +347,7 @@ export function ConfigTab() {
       dispatch({ type: "CLEAR_TRANSACCIONES" });
       dispatch({ type: "ADD_TRANSACCIONES", payload: updatedTransacciones });
       toast.success(`${updatedCount} transacciones sincronizadas`, {
-        description: "Los datos de comercio y centro han sido actualizados",
+        description: "Los datos de comercio y centro han sido actualizados según el historial",
       });
     } else {
       toast.info("Todas las transacciones ya están sincronizadas");
@@ -435,14 +551,26 @@ export function ConfigTab() {
                           <TableHead>Cód. Establecimiento</TableHead>
                           <TableHead>Nombre Comercio</TableHead>
                           <TableHead>Centro Comercial</TableHead>
-                          <TableHead className="w-20" />
+                          <TableHead className="w-32">Acciones</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredDatafonos.map((d) => (
                           <TableRow key={d.codEstablecimiento}>
                             <TableCell className="font-mono">
-                              {d.codEstablecimiento}
+                              <div className="flex items-center gap-2">
+                                {d.codEstablecimiento}
+                                {d.historial && d.historial.length > 0 && (
+                                  <Badge
+                                    variant="outline"
+                                    className="cursor-pointer text-xs"
+                                    onClick={() => setShowHistorial(d)}
+                                  >
+                                    <Clock className="mr-1 h-3 w-3" />
+                                    {d.historial.length}
+                                  </Badge>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell className="max-w-[200px] truncate" title={d.nombreComercio || d.marca || ""}>
                               {d.nombreComercio || d.marca || "-"}
@@ -452,15 +580,24 @@ export function ConfigTab() {
                                 ?.nombre || "Desconocido"}
                             </TableCell>
                             <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  handleDeleteDatafono(d.codEstablecimiento)
-                                }
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleOpenEditDatafono(d)}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    handleDeleteDatafono(d.codEstablecimiento)
+                                  }
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -665,6 +802,132 @@ export function ConfigTab() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Edit Datafono Dialog */}
+      <Dialog open={!!editingDatafono} onOpenChange={(open) => !open && setEditingDatafono(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Datáfono</DialogTitle>
+            <DialogDescription>
+              Los cambios se aplicarán desde la fecha efectiva indicada. El historial anterior se preservará para consultas históricas.
+            </DialogDescription>
+          </DialogHeader>
+          {editingDatafono && (
+            <div className="space-y-4">
+              <div>
+                <Label className="text-xs text-muted-foreground">Cód. Establecimiento</Label>
+                <p className="font-mono text-sm font-medium">{editingDatafono.codEstablecimiento}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-fecha">Fecha Efectiva del Cambio *</Label>
+                <Input
+                  id="edit-fecha"
+                  type="date"
+                  value={editDatafonoForm.fechaEfectiva}
+                  onChange={(e) =>
+                    setEditDatafonoForm({ ...editDatafonoForm, fechaEfectiva: e.target.value })
+                  }
+                  className="bg-secondary"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Los cambios se aplicarán a partir de esta fecha. Las transacciones anteriores conservarán los datos del historial.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-nombre">Nombre Comercio</Label>
+                <Input
+                  id="edit-nombre"
+                  placeholder="Ej: EXITO UNICENTRO"
+                  value={editDatafonoForm.nombreComercio}
+                  onChange={(e) =>
+                    setEditDatafonoForm({ ...editDatafonoForm, nombreComercio: e.target.value })
+                  }
+                  className="bg-secondary"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-centro">Centro Comercial *</Label>
+                <Select
+                  value={editDatafonoForm.centroId}
+                  onValueChange={(v) =>
+                    setEditDatafonoForm({ ...editDatafonoForm, centroId: v })
+                  }
+                >
+                  <SelectTrigger className="bg-secondary">
+                    <SelectValue placeholder="Seleccionar..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {state.centros.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingDatafono(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveEditDatafono}>
+              <Save className="mr-2 h-4 w-4" />
+              Guardar Cambios
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Historial Dialog */}
+      <Dialog open={!!showHistorial} onOpenChange={(open) => !open && setShowHistorial(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Historial de Cambios</DialogTitle>
+            <DialogDescription>
+              {showHistorial && (
+                <>Datáfono: <span className="font-mono">{showHistorial.codEstablecimiento}</span></>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {showHistorial && showHistorial.historial && (
+            <div className="max-h-80 overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha Efectiva</TableHead>
+                    <TableHead>Nombre Comercio</TableHead>
+                    <TableHead>Centro</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {showHistorial.historial.map((entry, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="font-mono text-sm">
+                        {entry.fechaEfectiva === "1900-01-01" ? "Inicio" : formatDate(entry.fechaEfectiva)}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {entry.nombreComercio || entry.marca || "-"}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {state.centros.find((c) => c.id === entry.centroId)?.nombre || "Desconocido"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowHistorial(null)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
