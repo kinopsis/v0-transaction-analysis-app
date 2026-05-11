@@ -413,21 +413,14 @@ export async function importTransacciones(
     batchKeys.add(compositeKey);
 
     // VALIDATION 5 — DATAFONO CORRESPONDENCE CHECK:
-    // The "Código establecimiento" (8-digit) in the CSV must correspond exactly to a
-    // Datáfono registered in Configuración. The datáfono number in config IS the
-    // código de establecimiento — both are the same 8-digit numeric identifier.
-    // Rows whose código is not registered are tracked as warnings (not hard-blocked)
-    // so they can still be imported but flagged for the user to review.
-    if (!registeredDatafonoMap.has(codEstablecimiento)) {
+    // The "Código establecimiento" (8-digit) in the CSV should correspond to a
+    // Datáfono registered in Configuración. If not, we still import the transaction
+    // but mark it with datafonoNoRegistrado = true so it can be highlighted in the UI
+    // for manual correction.
+    const isDatafonoRegistered = registeredDatafonoMap.has(codEstablecimiento);
+    if (!isDatafonoRegistered) {
       unregisteredSet.add(codEstablecimiento);
-      rejectedUnregistered++;
-      errors.push({
-        fila,
-        campo: "Código establecimiento",
-        valor: codEstablecimiento,
-        mensaje: `El código de establecimiento "${codEstablecimiento}" no corresponde a ningún datáfono registrado en Configuración → Datáfonos. El número de datáfono en la configuración debe coincidir exactamente con este código (8 dígitos).`,
-      });
-      return;
+      rejectedUnregistered++; // Track count for reporting (now "flagged" not "rejected")
     }
 
     // Parse value
@@ -457,6 +450,7 @@ export async function importTransacciones(
       nombreCentro,
       mes: dateResult.mes,
       anio: dateResult.anio,
+      datafonoNoRegistrado: !isDatafonoRegistered,
     });
   });
 

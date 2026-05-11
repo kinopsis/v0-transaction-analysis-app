@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -11,6 +11,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { Transaccion } from "@/lib/types";
 import { formatCurrency, formatDate } from "@/lib/data-utils";
 
@@ -47,6 +54,12 @@ export function TransactionTable({
     setCurrentPage(1);
   }, [transactions.length]);
 
+  // Count unregistered transactions
+  const unregisteredCount = useMemo(
+    () => transactions.filter((t) => t.datafonoNoRegistrado).length,
+    [transactions]
+  );
+
   if (transactions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-card p-12">
@@ -59,6 +72,24 @@ export function TransactionTable({
 
   return (
     <div className="space-y-4">
+      {/* Warning banner for unregistered transactions */}
+      {unregisteredCount > 0 && (
+        <div className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-700">
+              {unregisteredCount} transaccion(es) con datafono no registrado
+            </p>
+            <p className="text-xs text-amber-600/80">
+              Estas filas estan resaltadas en amarillo. Registra los datafonos en Configuracion para corregirlas.
+            </p>
+          </div>
+          <Badge variant="outline" className="border-amber-500/50 bg-amber-500/20 text-amber-700">
+            Requiere correccion
+          </Badge>
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
         <Table className="min-w-[900px]">
           <TableHeader>
@@ -66,7 +97,7 @@ export function TransactionTable({
               <TableHead className="w-28">Fecha</TableHead>
               <TableHead className="w-40">Tarjeta</TableHead>
               <TableHead className="w-28 text-right">Valor</TableHead>
-              <TableHead className="w-28">Cód. Estab.</TableHead>
+              <TableHead className="w-28">Cod. Estab.</TableHead>
               <TableHead className="min-w-32">Nombre Comercio</TableHead>
               <TableHead className="w-20">Red Adq.</TableHead>
               <TableHead className="min-w-28">Centro</TableHead>
@@ -75,7 +106,14 @@ export function TransactionTable({
           </TableHeader>
           <TableBody>
             {currentTransactions.map((t) => (
-              <TableRow key={t.id}>
+              <TableRow
+                key={t.id}
+                className={
+                  t.datafonoNoRegistrado
+                    ? "bg-amber-500/10 hover:bg-amber-500/20"
+                    : ""
+                }
+              >
                 <TableCell className="whitespace-nowrap font-mono text-xs">
                   {formatDate(t.fecha)}
                 </TableCell>
@@ -86,15 +124,49 @@ export function TransactionTable({
                   {formatCurrency(t.valor)}
                 </TableCell>
                 <TableCell className="whitespace-nowrap font-mono text-xs">
-                  {t.codEstablecimiento || "-"}
+                  {t.datafonoNoRegistrado ? (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3 text-amber-600" />
+                            <span className="text-amber-700 font-medium">
+                              {t.codEstablecimiento || "-"}
+                            </span>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Datafono no registrado en Configuracion</p>
+                          <p className="text-xs text-muted-foreground">
+                            Agrega este codigo en Configuracion → Datafonos
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    t.codEstablecimiento || "-"
+                  )}
                 </TableCell>
-                <TableCell className="max-w-48 truncate text-sm" title={t.marca || ""}>
-                  {t.marca || "-"}
+                <TableCell
+                  className="max-w-48 truncate text-sm"
+                  title={t.marca || ""}
+                >
+                  {t.datafonoNoRegistrado ? (
+                    <span className="text-amber-700 italic">No identificado</span>
+                  ) : (
+                    t.marca || "-"
+                  )}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm">
                   {t.redAdquirente || "-"}
                 </TableCell>
-                <TableCell className="text-sm">{t.nombreCentro}</TableCell>
+                <TableCell className="text-sm">
+                  {t.datafonoNoRegistrado ? (
+                    <span className="text-amber-700 italic">{t.nombreCentro}</span>
+                  ) : (
+                    t.nombreCentro
+                  )}
+                </TableCell>
                 <TableCell className="whitespace-nowrap font-mono text-xs">
                   {t.codAutorizacion || "-"}
                 </TableCell>

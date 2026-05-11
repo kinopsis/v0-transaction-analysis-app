@@ -35,6 +35,8 @@ export interface Transaccion {
   nombreCentro: string;
   mes: number;
   anio: number;
+  /** Flag: true if the codEstablecimiento does not match any registered Datafono */
+  datafonoNoRegistrado?: boolean;
 }
 
 // Remanente (prepaid card remainder/refund record)

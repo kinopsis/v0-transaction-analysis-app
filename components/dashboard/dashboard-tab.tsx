@@ -84,7 +84,7 @@ export function DashboardTab() {
           descParts.push(`${duplicates} duplicados ignorados`);
         if (rejectedUnregistered > 0)
           descParts.push(
-            `${rejectedUnregistered} filas rechazadas por datáfono no registrado`
+            `${rejectedUnregistered} transacciones con datafono no registrado (resaltadas)`
           );
 
         toast.success(
@@ -103,42 +103,21 @@ export function DashboardTab() {
           });
         }
 
-        // Error: códigos de establecimiento del CSV no coinciden con ningún datáfono registrado.
-        // Regla de integridad: el "Código establecimiento" (8 dígitos) de la columna CSV
-        // debe corresponder exactamente al número de datáfono registrado en Configuración.
-        // Ambos son el mismo identificador de 8 dígitos numéricos.
+        // Warn (not error) about unregistered datafono codes - transactions ARE imported but flagged
         if (unregisteredCodes.length > 0) {
           const sample = unregisteredCodes.slice(0, 5).join(", ");
           const extra =
             unregisteredCodes.length > 5
-              ? ` y ${unregisteredCodes.length - 5} más`
+              ? ` y ${unregisteredCodes.length - 5} mas`
               : "";
-          toast.error(
-            `${rejectedUnregistered} fila(s) rechazadas — datáfono no registrado`,
+          toast.warning(
+            `${rejectedUnregistered} transaccion(es) con datafono no registrado`,
             {
-              description: `Los códigos de establecimiento: ${sample}${extra} no coinciden con ningún datáfono en Configuración → Datáfonos. El número de datáfono en la configuración debe ser exactamente igual al "Código establecimiento" del archivo (8 dígitos numéricos).`,
+              description: `Los codigos: ${sample}${extra} no coinciden con ningun datafono en Configuracion. Estas transacciones se importaron pero estan resaltadas en la tabla para correccion manual.`,
               duration: 10000,
             }
           );
         }
-      } else if (
-        rejectedUnregistered > 0 &&
-        transacciones.length === 0 &&
-        duplicates === 0
-      ) {
-        // All rows were rejected due to unregistered datafono codes
-        const sample = unregisteredCodes.slice(0, 5).join(", ");
-        const extra =
-          unregisteredCodes.length > 5
-            ? ` y ${unregisteredCodes.length - 5} más`
-            : "";
-        toast.error(
-          "No se importaron transacciones — todos los datáfonos son desconocidos",
-          {
-            description: `Ningún "Código establecimiento" del archivo coincide con un datáfono registrado en Configuración. Registra los datáfonos con los códigos: ${sample}${extra} (exactamente 8 dígitos, igual al "Código establecimiento" del CSV).`,
-            duration: 12000,
-          }
-        );
       } else if (duplicates > 0 && transacciones.length === 0) {
         toast.warning(
           "Todas las transacciones del archivo ya están registradas",
