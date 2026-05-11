@@ -90,84 +90,131 @@ export async function exportDashboardToPdf(options: PdfExportOptions): Promise<v
 
   // Capture charts as images FIRST (on first page after summary)
   if (chartsContainer) {
-    const html2canvas = (await import("html2canvas")).default;
-    
     // Wait a bit to ensure all charts are fully rendered
     await new Promise(resolve => setTimeout(resolve, 300));
     
-    // Find all chart cards
+    // Find all chart cards with SVGs
     const chartCards = chartsContainer.querySelectorAll("[data-chart-export]");
     
     for (const chartCard of Array.from(chartCards)) {
       try {
-        // Apply temporary inline styles to handle lab() colors before capture
         const chartElement = chartCard as HTMLElement;
-        const allElements = chartElement.querySelectorAll('*');
-        const originalStyles: Map<HTMLElement, { bg: string; color: string; borderColor: string }> = new Map();
+        // Try multiple selectors for Recharts SVG
+        const svg = chartElement.querySelector("svg.recharts-surface") 
+          || chartElement.querySelector(".recharts-wrapper svg")
+          || chartElement.querySelector("svg");
         
-        // Store original styles and apply fallback colors
-        allElements.forEach((el) => {
-          const htmlEl = el as HTMLElement;
-          const computed = window.getComputedStyle(htmlEl);
-          originalStyles.set(htmlEl, {
-            bg: htmlEl.style.backgroundColor,
-            color: htmlEl.style.color,
-            borderColor: htmlEl.style.borderColor,
+        if (svg) {
+          // Clone the SVG and process colors
+          const svgClone = svg.cloneNode(true) as SVGElement;
+          
+          // Replace oklch/lab colors with hex equivalents
+          const colorReplacements: Record<string, string> = {
+            "oklch(0.28 0.02 250)": "#334155", // slate-700
+            "oklch(0.65 0.02 250)": "#94a3b8", // slate-400
+            "oklch(0.18 0.02 250)": "#0f172a", // slate-900
+            "oklch(0.93 0.01 250)": "#f1f5f9", // slate-100
+          };
+          
+          // Process all elements with stroke/fill
+          const allSvgElements = svgClone.querySelectorAll("*");
+          allSvgElements.forEach((el) => {
+            const svgEl = el as SVGElement;
+            ["stroke", "fill", "stop-color"].forEach((attr) => {
+              const value = svgEl.getAttribute(attr);
+              if (value) {
+                for (const [oklch, hex] of Object.entries(colorReplacements)) {
+                  if (value.includes(oklch)) {
+                    svgEl.setAttribute(attr, value.replace(oklch, hex));
+                  }
+                }
+              }
+            });
+            // Also check style attribute
+            const style = svgEl.getAttribute("style");
+            if (style) {
+              let newStyle = style;
+              for (const [oklch, hex] of Object.entries(colorReplacements)) {
+                newStyle = newStyle.replace(new RegExp(oklch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), hex);
+              }
+              svgEl.setAttribute("style", newStyle);
+            }
           });
           
-          // Force computed colors to be applied as inline styles
-          if (computed.backgroundColor) {
-            try {
-              htmlEl.style.backgroundColor = computed.backgroundColor;
-            } catch {
-              htmlEl.style.backgroundColor = '#0f172a';
+          // Get SVG dimensions
+          const svgRect = svg.getBoundingClientRect();
+          const svgWidth = svgRect.width || 400;
+          const svgHeight = svgRect.height || 200;
+          
+          // Set explicit dimensions on cloned SVG
+          svgClone.setAttribute("width", String(svgWidth));
+          svgClone.setAttribute("height", String(svgHeight));
+          svgClone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+          
+          // Serialize to string
+          const serializer = new XMLSerializer();
+          const svgString = serializer.serializeToString(svgClone);
+          
+          // Create a canvas and draw the SVG
+          const canvas = document.createElement("canvas");
+          const scale = 2;
+          canvas.width = svgWidth * scale;
+          canvas.height = svgHeight * scale;
+          const ctx = canvas.getContext("2d");
+          
+          if (ctx) {
+            ctx.scale(scale, scale);
+            ctx.fillStyle = "#0f172a";
+            ctx.fillRect(0, 0, svgWidth, svgHeight);
+            
+            // Create image from SVG
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+            const url = URL.createObjectURL(svgBlob);
+            
+            await new Promise<void>((resolve, reject) => {
+              img.onload = () => {
+                ctx.drawImage(img, 0, 0);
+                URL.revokeObjectURL(url);
+                resolve();
+              };
+              img.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error("Failed to load SVG"));
+              };
+              img.src = url;
+            });
+            
+            // Get chart title from the card
+            const titleEl = chartElement.querySelector("[class*='CardTitle']");
+            const title = titleEl?.textContent || "";
+            
+            // Add title above chart in PDF
+            if (title) {
+              doc.setFontSize(10);
+              doc.setFont("helvetica", "bold");
+              doc.setTextColor(255, 255, 255);
+              doc.text(title.split("(")[0].trim(), margin, yPosition);
+              yPosition += 5;
             }
-          }
-          if (computed.color) {
-            try {
-              htmlEl.style.color = computed.color;
-            } catch {
-              htmlEl.style.color = '#e2e8f0';
+            
+            const imgData = canvas.toDataURL("image/png");
+            const imgWidth = pageWidth - (margin * 2);
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            
+            // Check if we need a new page
+            if (yPosition + imgHeight > pageHeight - margin) {
+              doc.addPage();
+              yPosition = margin;
             }
+            
+            doc.addImage(imgData, "PNG", margin, yPosition, imgWidth, imgHeight);
+            yPosition += imgHeight + 10;
           }
-        });
-
-        const canvas = await html2canvas(chartElement, {
-          backgroundColor: "#0f172a", // slate-900
-          scale: 1.5,
-          logging: false,
-          useCORS: true,
-          allowTaint: true,
-          foreignObjectRendering: false,
-          imageTimeout: 15000,
-          ignoreElements: (element) => {
-            // Ignore elements with problematic styling
-            return element.tagName === 'STYLE';
-          },
-        });
-        
-        // Restore original styles
-        originalStyles.forEach((styles, el) => {
-          el.style.backgroundColor = styles.bg;
-          el.style.color = styles.color;
-          el.style.borderColor = styles.borderColor;
-        });
-        
-        const imgData = canvas.toDataURL("image/png");
-        const imgWidth = pageWidth - (margin * 2);
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
-        
-        // Check if we need a new page
-        if (yPosition + imgHeight > pageHeight - margin) {
-          doc.addPage();
-          yPosition = margin;
         }
-        
-        doc.addImage(imgData, "PNG", margin, yPosition, imgWidth, imgHeight);
-        yPosition += imgHeight + 8;
       } catch (error) {
-        // Log error for debugging but continue
-        console.warn("Failed to capture chart:", error);
+        console.warn("[v0] Failed to capture chart:", error);
       }
     }
   }
@@ -392,47 +439,48 @@ function drawComisionSummaryBox(
   pageWidth: number
 ): number {
   const boxWidth = pageWidth - margin * 2;
-  const boxHeight = 52;
+  const boxHeight = 38; // More compact
   
   // Box background
   doc.setFillColor(30, 41, 59); // slate-800
   doc.setDrawColor(51, 65, 85); // slate-700
-  doc.roundedRect(margin, startY, boxWidth, boxHeight, 3, 3, "FD");
+  doc.roundedRect(margin, startY, boxWidth, boxHeight, 2, 2, "FD");
 
   // Title and Period on same line
-  doc.setFontSize(11);
+  doc.setFontSize(9);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(255, 255, 255);
   const title = summary.isFiltered
     ? `Resumen - ${summary.centroNombre}`
     : "Resumen General";
-  doc.text(title, margin + 6, startY + 10);
+  doc.text(title, margin + 4, startY + 7);
 
   // Period badge
-  doc.setFontSize(8);
+  doc.setFontSize(7);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(148, 163, 184); // slate-400
-  doc.text(`Periodo: ${summary.periodoFacturado}`, pageWidth - margin - 6, startY + 10, { align: "right" });
+  doc.text(`Periodo: ${summary.periodoFacturado}`, pageWidth - margin - 4, startY + 7, { align: "right" });
 
-  // Data row - 4 columns layout
-  const colWidth = (boxWidth - 12) / 4;
-  const col1X = margin + 6;
-  const col2X = col1X + colWidth;
-  const col3X = col2X + colWidth;
-  const col4X = col3X + colWidth;
-  const dataRowY = startY + 22;
+  // Single data row - 5 columns: Trans | Vol | Com | Cuota | Total
+  const col1X = margin + 4;
+  const col2X = margin + 30;
+  const col3X = margin + 68;
+  const col4X = margin + 105;
+  const col5X = margin + 138;
+  const dataRowY = startY + 17;
 
   // Labels
-  doc.setFontSize(7);
+  doc.setFontSize(6);
   doc.setTextColor(148, 163, 184);
   doc.text("Transacciones", col1X, dataRowY);
   doc.text("Volumen", col2X, dataRowY);
   doc.text("Comision (2%)", col3X, dataRowY);
   doc.text("Cuota Fija", col4X, dataRowY);
+  doc.text("Total a Facturar", col5X, dataRowY);
 
   // Values
-  const valueRowY = dataRowY + 8;
-  doc.setFontSize(9);
+  const valueRowY = dataRowY + 6;
+  doc.setFontSize(8);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(255, 255, 255);
   doc.text(formatNumber(summary.totalTransacciones), col1X, valueRowY);
@@ -441,20 +489,17 @@ function drawComisionSummaryBox(
   doc.text(formatCurrency(summary.comisionTotal), col3X, valueRowY);
   doc.setTextColor(34, 197, 94); // green-500
   doc.text(formatCurrency(summary.cuotaFijaTotal), col4X, valueRowY);
-
-  // Total row at bottom
-  const totalRowY = startY + boxHeight - 8;
-  doc.setFillColor(15, 23, 42); // slate-900
-  doc.roundedRect(margin + 3, totalRowY - 6, boxWidth - 6, 12, 2, 2, "F");
   
-  doc.setFontSize(9);
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.text("TOTAL A FACTURAR:", margin + 8, totalRowY);
-  
+  // Grand total with highlight
+  doc.setFontSize(10);
   doc.setTextColor(34, 197, 94); // green-500
-  doc.setFontSize(11);
-  doc.text(formatCurrency(summary.grandTotal), pageWidth - margin - 8, totalRowY, { align: "right" });
+  doc.text(formatCurrency(summary.grandTotal), col5X, valueRowY);
+
+  // Bottom line showing calculation
+  doc.setFontSize(5);
+  doc.setTextColor(100, 116, 139); // slate-500
+  doc.setFont("helvetica", "normal");
+  doc.text(`(Comision + Cuota Fija = Total)`, pageWidth - margin - 4, startY + boxHeight - 3, { align: "right" });
 
   return startY + boxHeight;
 }
