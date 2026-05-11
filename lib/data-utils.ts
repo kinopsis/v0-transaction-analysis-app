@@ -172,15 +172,24 @@ export async function importTransacciones(
   file: File,
   datafonos: Datafono[],
   centros: CentroComercial[],
-  archivoId: string
-): Promise<{ transacciones: Transaccion[]; errors: ImportError[] }> {
+  archivoId: string,
+  existingTransacciones: Transaccion[] = []
+): Promise<{ transacciones: Transaccion[]; errors: ImportError[]; duplicates: number }> {
   const rows = await parseFile(file);
   const transacciones: Transaccion[] = [];
   const errors: ImportError[] = [];
-  
+
+  // Build composite duplicate key set from existing transactions: "codAutorizacion|fecha"
+  const existingKeys = new Set(
+    existingTransacciones.map((t) => `${t.codAutorizacion}|${t.fecha}`)
+  );
+  // Track keys within this import batch to avoid intra-file duplicates
+  const batchKeys = new Set<string>();
+  let duplicates = 0;
+
   rows.forEach((row, index) => {
     const fila = index + 2; // Account for header row
-    
+
     // Get values with flexible column names
     const nroDispositivo = String(
       row["Nro dispositivo"] || row["nro_dispositivo"] || row["NroDispositivo"] || ""
@@ -188,24 +197,30 @@ export async function importTransacciones(
     const fechaRaw = String(
       row["Fecha de autorización"] || row["fecha_autorizacion"] || row["Fecha"] || ""
     ).trim();
-    const tarjeta = String(
-      row["Tarjeta"] || row["tarjeta"] || ""
-    ).trim();
-    const valorRaw = row["Valor"] || row["valor"] || 0;
-    const subtipo = String(
-      row["Subtipo"] || row["subtipo"] || ""
+    const tarjeta = String(row["Tarjeta"] || row["tarjeta"] || "").trim();
+    const valorRaw = row["Valor transacción"] || row["Valor"] || row["valor"] || 0;
+    const subtipo = String(row["Subtipo"] || row["subtipo"] || "").trim();
+    const redAdquirente = String(
+      row["Red adquirente"] || row["red_adquirente"] || row["RedAdquirente"] || ""
     ).trim();
     const codEstablecimiento = String(
-      row["Cod establecimiento"] || row["cod_establecimiento"] || row["CodEstablecimiento"] || ""
+      row["Código establecimiento"] ||
+      row["Cod establecimiento"] ||
+      row["cod_establecimiento"] ||
+      row["CodEstablecimiento"] ||
+      ""
     ).trim();
-    const estado = String(
-      row["Estado"] || row["estado"] || ""
+    const estado = String(row["Descripción estado de cobro de los cargos"] || row["Estado"] || row["estado"] || "").trim();
+    const codAutorizacion = String(
+      row["Cod. Autorización"] ||
+      row["Cod. Autorizacion"] ||
+      row["CodAutorizacion"] ||
+      row["Comprobante"] ||
+      row["comprobante"] ||
+      ""
     ).trim();
-    const comprobante = String(
-      row["Comprobante"] || row["comprobante"] || ""
-    ).trim();
-    
-    // Validate datáfono
+
+    // Validate datáfono (device number)
     if (!validateDatafono(nroDispositivo)) {
       errors.push({
         fila,
@@ -215,7 +230,7 @@ export async function importTransacciones(
       });
       return;
     }
-    
+
     // Parse date
     const dateResult = parseDate(fechaRaw);
     if (!dateResult) {
@@ -227,29 +242,39 @@ export async function importTransacciones(
       });
       return;
     }
-    
+
+    // Check for duplicates using Cod. Autorización + Fecha as composite key
+    const compositeKey = `${codAutorizacion}|${dateResult.fecha}`;
+    if (existingKeys.has(compositeKey) || batchKeys.has(compositeKey)) {
+      duplicates++;
+      return;
+    }
+    batchKeys.add(compositeKey);
+
     // Parse value
-    const valor = typeof valorRaw === "number" 
-      ? valorRaw 
-      : parseFloat(String(valorRaw).replace(/[^0-9.-]/g, "")) || 0;
-    
+    const valor =
+      typeof valorRaw === "number"
+        ? valorRaw
+        : parseFloat(String(valorRaw).replace(/[^0-9.-]/g, "")) || 0;
+
     // Find centro by codEstablecimiento (primary key)
     const { centroId, nombreCentro, nombreComercio, marca } = findCentroByCodEstablecimiento(
       codEstablecimiento,
       datafonos,
       centros
     );
-    
+
     transacciones.push({
       id: generateId(),
       fecha: dateResult.fecha,
       tarjeta: tarjeta.replace(/[^0-9]/g, ""),
       valor,
-      nroDispositivo: nroDispositivo.replace(/[^0-9]/g, ""),
+      nroDispositivo: nroDispositivo.replace(/[^0-9A-Za-z]/g, ""),
       subtipo,
+      redAdquirente,
       codEstablecimiento,
       estado,
-      comprobante,
+      codAutorizacion,
       centroId,
       archivoId,
       marca: nombreComercio || marca,
@@ -258,8 +283,8 @@ export async function importTransacciones(
       anio: dateResult.anio,
     });
   });
-  
-  return { transacciones, errors };
+
+  return { transacciones, errors, duplicates };
 }
 
 // Import remanentes from file
@@ -395,10 +420,13 @@ export function filterTransacciones(
     if (filters.fechaFin && t.fecha > filters.fechaFin) {
       return false;
     }
-    if (filters.subtipo && t.subtipo !== filters.subtipo) {
+    if (filters.redAdquirente && t.redAdquirente !== filters.redAdquirente) {
       return false;
     }
     if (filters.nroDispositivo && !t.nroDispositivo.includes(filters.nroDispositivo)) {
+      return false;
+    }
+    if (filters.codEstablecimiento && !t.codEstablecimiento.includes(filters.codEstablecimiento)) {
       return false;
     }
     if (filters.tarjeta && !t.tarjeta.includes(filters.tarjeta)) {
@@ -421,7 +449,7 @@ export function calculateKPIs(transacciones: Transaccion[]): KPIData {
   const ticketPromedio = numTransacciones > 0 ? volumenVentas / numTransacciones : 0;
   const comisionAcumulada = volumenVentas * COMMISSION_RATE;
   const tarjetasUnicas = new Set(transacciones.map((t) => t.tarjeta)).size;
-  const datafonosUnicos = new Set(transacciones.map((t) => t.nroDispositivo)).size;
+  const datafonosUnicos = new Set(transacciones.map((t) => t.codEstablecimiento)).size;
   
   return {
     volumenVentas,

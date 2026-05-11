@@ -73,7 +73,7 @@ export function ReportsTab() {
     const map = new Map<string, Set<string>>();
     filteredTransacciones.forEach((t) => {
       const existing = map.get(t.centroId) || new Set();
-      existing.add(t.nroDispositivo);
+      existing.add(t.codEstablecimiento);
       map.set(t.centroId, existing);
     });
     return map;
@@ -272,7 +272,7 @@ export function ReportsTab() {
                       <TableHead>Fecha</TableHead>
                       <TableHead>Tarjeta</TableHead>
                       <TableHead className="text-right">Valor</TableHead>
-                      <TableHead>Datáfono</TableHead>
+                      <TableHead>Cód. Establecimiento</TableHead>
                       <TableHead>Centro</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -289,7 +289,7 @@ export function ReportsTab() {
                           {formatCurrency(t.valor)}
                         </TableCell>
                         <TableCell className="font-mono text-xs">
-                          {t.nroDispositivo}
+                          {t.codEstablecimiento}
                         </TableCell>
                         <TableCell>{t.nombreCentro}</TableCell>
                       </TableRow>

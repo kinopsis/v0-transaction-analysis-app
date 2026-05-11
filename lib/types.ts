@@ -25,9 +25,10 @@ export interface Transaccion {
   valor: number;
   nroDispositivo: string;
   subtipo: string;
+  redAdquirente: string;
   codEstablecimiento: string;
   estado: string;
-  comprobante: string;
+  codAutorizacion: string;
   centroId: string;
   archivoId: string;
   marca?: string;
@@ -109,8 +110,9 @@ export interface FilterState {
   centroIds: string[];
   fechaInicio?: string;
   fechaFin?: string;
-  subtipo?: string;
+  redAdquirente?: string;
   nroDispositivo?: string;
+  codEstablecimiento?: string;
   tarjeta?: string;
   mes?: number;
   anio?: number;

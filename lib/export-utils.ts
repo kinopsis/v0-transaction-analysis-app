@@ -12,10 +12,9 @@ export function exportTransaccionesExcel(transacciones: Transaccion[], filename:
     "Valor": t.valor,
     "Datáfono": t.nroDispositivo,
     "Nombre Comercio": t.marca || "",
-    "Subtipo": t.subtipo,
+    "Red Adquirente": t.redAdquirente,
     "Cod Establecimiento": t.codEstablecimiento,
-    "Estado": t.estado,
-    "Comprobante": t.comprobante,
+    "Cod. Autorización": t.codAutorizacion,
     "Centro Comercial": t.nombreCentro,
   }));
   
@@ -39,13 +38,14 @@ export function exportTransaccionesPDF(transacciones: Transaccion[], filename: s
     formatDate(t.fecha),
     t.tarjeta,
     formatCurrency(t.valor),
-    t.nroDispositivo,
-    t.subtipo,
+    t.codEstablecimiento,
+    t.redAdquirente,
+    t.codAutorizacion,
     t.nombreCentro,
   ]);
   
   autoTable(doc, {
-    head: [["Fecha", "Tarjeta", "Valor", "Datáfono", "Subtipo", "Centro"]],
+    head: [["Fecha", "Tarjeta", "Valor", "Cód. Estab.", "Red Adq.", "Cod. Autorizacion", "Centro"]],
     body: tableData,
     startY: 35,
     styles: { fontSize: 8 },
@@ -192,7 +192,7 @@ export function exportRemanentesPDF(remanentes: Remanente[], filename: string) {
 // Export datáfonos to CSV — uses the same column structure as the import format
 export function exportDatafonosCSV(datafonos: Datafono[], centros: CentroComercial[]) {
   const data = datafonos.map((d) => ({
-    "Datáfono": d.nroDispositivo,
+    "Datáfono": d.codEstablecimiento,
     "Marca": d.nombreComercio || d.marca || "",
     "Centro Comercial": centros.find((c) => c.id === d.centroId)?.nombre || "",
   }));
@@ -217,7 +217,7 @@ export function exportDatafonosUnicosExcel(
   
   transacciones.forEach((t) => {
     const existing = datafonosPorCentro.get(t.centroId) || new Set();
-    existing.add(t.nroDispositivo);
+    existing.add(t.codEstablecimiento);
     datafonosPorCentro.set(t.centroId, existing);
   });
   
@@ -257,7 +257,7 @@ export function exportDatafonosUnicosPDF(
   
   transacciones.forEach((t) => {
     const existing = datafonosPorCentro.get(t.centroId) || new Set();
-    existing.add(t.nroDispositivo);
+    existing.add(t.codEstablecimiento);
     datafonosPorCentro.set(t.centroId, existing);
   });
   

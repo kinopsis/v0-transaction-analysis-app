@@ -50,11 +50,12 @@ export function DashboardTab() {
   const handleImport = async (file: File) => {
     try {
       const archivoId = generateId();
-      const { transacciones, errors } = await importTransacciones(
+      const { transacciones, errors, duplicates } = await importTransacciones(
         file,
         state.datafonos,
         state.centros,
-        archivoId
+        archivoId,
+        state.transacciones
       );
 
       if (transacciones.length > 0) {
@@ -72,15 +73,24 @@ export function DashboardTab() {
           },
         });
 
+        const descParts: string[] = [];
+        if (errors.length > 0) descParts.push(`${errors.length} filas con errores omitidas`);
+        if (duplicates > 0) descParts.push(`${duplicates} duplicados ignorados (mismo Cod. Autorización + Fecha)`);
+
         toast.success(
           `${transacciones.length} transacciones importadas correctamente`,
-          {
-            description:
-              errors.length > 0
-                ? `${errors.length} filas con errores fueron omitidas`
-                : undefined,
-          }
+          { description: descParts.length > 0 ? descParts.join(" · ") : undefined }
         );
+
+        if (duplicates > 0) {
+          toast.warning(`${duplicates} registros duplicados detectados`, {
+            description: "Estos registros ya existen y fueron omitidos automáticamente",
+          });
+        }
+      } else if (duplicates > 0) {
+        toast.warning("Todas las transacciones del archivo ya están registradas", {
+          description: `${duplicates} duplicados detectados por Cod. Autorización + Fecha`,
+        });
       } else {
         toast.error("No se pudieron importar transacciones", {
           description:

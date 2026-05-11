@@ -50,7 +50,7 @@ export function ConfigTab() {
 
   // New datáfono form state
   const [newDatafono, setNewDatafono] = useState<Partial<Datafono>>({
-    nroDispositivo: "",
+    codEstablecimiento: "",
     nombreComercio: "",
     marca: "",
     centroId: "",
@@ -64,7 +64,7 @@ export function ConfigTab() {
   const filteredDatafonos = state.datafonos.filter((d) => {
     const matchesSearch =
       searchQuery === "" ||
-      d.nroDispositivo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      d.codEstablecimiento.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (d.nombreComercio || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       (d.marca || "").toLowerCase().includes(searchQuery.toLowerCase());
 
@@ -75,23 +75,18 @@ export function ConfigTab() {
   });
 
   const handleAddDatafono = () => {
-    if (!newDatafono.nroDispositivo || !newDatafono.centroId) {
+    if (!newDatafono.codEstablecimiento || !newDatafono.centroId) {
       toast.error("Por favor completa los campos obligatorios");
-      return;
-    }
-
-    if (newDatafono.nroDispositivo.length !== 8) {
-      toast.error("El número de dispositivo debe tener 8 dígitos");
       return;
     }
 
     // Check if already exists
     if (
       state.datafonos.some(
-        (d) => d.nroDispositivo === newDatafono.nroDispositivo
+        (d) => d.codEstablecimiento === newDatafono.codEstablecimiento
       )
     ) {
-      toast.error("Este datáfono ya está registrado");
+      toast.error("Este código de establecimiento ya está registrado");
       return;
     }
 
@@ -99,7 +94,7 @@ export function ConfigTab() {
       type: "ADD_DATAFONOS",
       payload: [
         {
-          nroDispositivo: newDatafono.nroDispositivo,
+          codEstablecimiento: newDatafono.codEstablecimiento,
           nombreComercio: newDatafono.nombreComercio || undefined,
           marca: newDatafono.marca || undefined,
           centroId: newDatafono.centroId,
@@ -107,12 +102,12 @@ export function ConfigTab() {
       ],
     });
 
-    setNewDatafono({ nroDispositivo: "", nombreComercio: "", marca: "", centroId: "" });
+    setNewDatafono({ codEstablecimiento: "", nombreComercio: "", marca: "", centroId: "" });
     toast.success("Datáfono agregado correctamente");
   };
 
-  const handleDeleteDatafono = (nroDispositivo: string) => {
-    dispatch({ type: "DELETE_DATAFONO", payload: nroDispositivo });
+  const handleDeleteDatafono = (codEstablecimiento: string) => {
+    dispatch({ type: "DELETE_DATAFONO", payload: codEstablecimiento });
     toast.success("Datáfono eliminado");
   };
 
@@ -194,8 +189,9 @@ export function ConfigTab() {
 
     let updatedCount = 0;
     const updatedTransacciones = state.transacciones.map((t) => {
+      // Find datafono by codEstablecimiento (primary key for synchronization)
       const datafono = state.datafonos.find(
-        (d) => d.nroDispositivo === t.nroDispositivo
+        (d) => d.codEstablecimiento === t.codEstablecimiento
       );
       if (datafono) {
         const centro = state.centros.find((c) => c.id === datafono.centroId);
@@ -258,15 +254,15 @@ export function ConfigTab() {
                 <div className="flex items-end gap-4">
                   <div className="w-36 shrink-0">
                     <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                      N° Datáfono *
+                      Cód. Establecimiento *
                     </label>
                     <Input
                       placeholder="12345678"
-                      value={newDatafono.nroDispositivo}
+                      value={newDatafono.codEstablecimiento}
                       onChange={(e) =>
                         setNewDatafono({
                           ...newDatafono,
-                          nroDispositivo: e.target.value.replace(/\D/g, "").slice(0, 10),
+                          codEstablecimiento: e.target.value.trim(),
                         })
                       }
                       className="bg-secondary font-mono"
@@ -420,7 +416,7 @@ export function ConfigTab() {
                     <Table>
                       <TableHeader className="sticky top-0 bg-card">
                         <TableRow>
-                          <TableHead>N° Datáfono</TableHead>
+                          <TableHead>Cód. Establecimiento</TableHead>
                           <TableHead>Nombre Comercio</TableHead>
                           <TableHead>Centro Comercial</TableHead>
                           <TableHead className="w-20" />
@@ -428,9 +424,9 @@ export function ConfigTab() {
                       </TableHeader>
                       <TableBody>
                         {filteredDatafonos.map((d) => (
-                          <TableRow key={d.nroDispositivo}>
+                          <TableRow key={d.codEstablecimiento}>
                             <TableCell className="font-mono">
-                              {d.nroDispositivo}
+                              {d.codEstablecimiento}
                             </TableCell>
                             <TableCell className="max-w-[200px] truncate" title={d.nombreComercio || d.marca || ""}>
                               {d.nombreComercio || d.marca || "-"}
@@ -444,7 +440,7 @@ export function ConfigTab() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() =>
-                                  handleDeleteDatafono(d.nroDispositivo)
+                                  handleDeleteDatafono(d.codEstablecimiento)
                                 }
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
