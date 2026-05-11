@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import type { Transaccion, CentroComercial, ComisionReporte } from "./types";
+import type { Transaccion, CentroComercial, ComisionReporte, KPIData } from "./types";
 import { COMMISSION_RATE } from "./constants";
 
 interface PdfExportOptions {
@@ -14,6 +14,7 @@ interface PdfExportOptions {
   transacciones: Transaccion[];
   chartsContainer: HTMLElement | null;
   centros: CentroComercial[];
+  kpis: KPIData;
 }
 
 const MESES = [
@@ -33,6 +34,7 @@ export async function exportDashboardToPdf(options: PdfExportOptions): Promise<v
     transacciones,
     chartsContainer,
     centros,
+    kpis,
   } = options;
 
   const doc = new jsPDF({
@@ -79,26 +81,46 @@ export async function exportDashboardToPdf(options: PdfExportOptions): Promise<v
 
   let yPosition = 55;
 
+  // Draw KPI Cards Section
+  yPosition = drawKPICards(doc, kpis, margin, yPosition, pageWidth);
+  yPosition += 6;
+
   // Calculate commission summary
   const comisionSummary = calculateComisionSummary(transacciones, centros, centroId, mes, anio);
   
-  // Draw Commission Summary Box
+  // Draw Commission Summary Box (more compact)
   if (comisionSummary) {
     yPosition = drawComisionSummaryBox(doc, comisionSummary, margin, yPosition, pageWidth);
-    yPosition += 8;
+    yPosition += 6;
   }
 
-  // Capture charts as images FIRST (on first page after summary)
+  // Capture charts as images (excluding monthly trend)
   if (chartsContainer) {
     // Wait a bit to ensure all charts are fully rendered
     await new Promise(resolve => setTimeout(resolve, 300));
     
-    // Find all chart cards with SVGs
+    // Find all chart cards with SVGs - but exclude monthly trend
     const chartCards = chartsContainer.querySelectorAll("[data-chart-export]");
     
+    // Chart metadata for titles
+    const chartTitles: Record<string, { title: string; xAxis: string; yAxis: string }> = {
+      "transacciones-dia": { title: "Transacciones por Dia", xAxis: "Dia del Mes", yAxis: "Cantidad / Volumen" },
+      "top-marcas": { title: "Top 10 Comercios por Transacciones", xAxis: "N° Transacciones", yAxis: "" },
+      "top-comercios-monto": { title: "Top 10 Comercios por Monto", xAxis: "Volumen (COP)", yAxis: "" },
+    };
+    
+    let chartIndex = 0;
     for (const chartCard of Array.from(chartCards)) {
       try {
         const chartElement = chartCard as HTMLElement;
+        
+        // Skip monthly trend chart (last chart) 
+        const titleEl = chartElement.querySelector("[class*='CardTitle']");
+        const titleText = titleEl?.textContent?.toLowerCase() || "";
+        if (titleText.includes("tendencia") || titleText.includes("mensual")) {
+          continue;
+        }
+        
         // Try multiple selectors for Recharts SVG
         const svg = chartElement.querySelector("svg.recharts-surface") 
           || chartElement.querySelector(".recharts-wrapper svg")
@@ -110,10 +132,10 @@ export async function exportDashboardToPdf(options: PdfExportOptions): Promise<v
           
           // Replace oklch/lab colors with hex equivalents
           const colorReplacements: Record<string, string> = {
-            "oklch(0.28 0.02 250)": "#334155", // slate-700
-            "oklch(0.65 0.02 250)": "#94a3b8", // slate-400
-            "oklch(0.18 0.02 250)": "#0f172a", // slate-900
-            "oklch(0.93 0.01 250)": "#f1f5f9", // slate-100
+            "oklch(0.28 0.02 250)": "#334155",
+            "oklch(0.65 0.02 250)": "#94a3b8",
+            "oklch(0.18 0.02 250)": "#0f172a",
+            "oklch(0.93 0.01 250)": "#f1f5f9",
           };
           
           // Process all elements with stroke/fill
@@ -130,7 +152,6 @@ export async function exportDashboardToPdf(options: PdfExportOptions): Promise<v
                 }
               }
             });
-            // Also check style attribute
             const style = svgEl.getAttribute("style");
             if (style) {
               let newStyle = style;
@@ -146,16 +167,13 @@ export async function exportDashboardToPdf(options: PdfExportOptions): Promise<v
           const svgWidth = svgRect.width || 400;
           const svgHeight = svgRect.height || 200;
           
-          // Set explicit dimensions on cloned SVG
           svgClone.setAttribute("width", String(svgWidth));
           svgClone.setAttribute("height", String(svgHeight));
           svgClone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
           
-          // Serialize to string
           const serializer = new XMLSerializer();
           const svgString = serializer.serializeToString(svgClone);
           
-          // Create a canvas and draw the SVG
           const canvas = document.createElement("canvas");
           const scale = 2;
           canvas.width = svgWidth * scale;
@@ -167,7 +185,6 @@ export async function exportDashboardToPdf(options: PdfExportOptions): Promise<v
             ctx.fillStyle = "#0f172a";
             ctx.fillRect(0, 0, svgWidth, svgHeight);
             
-            // Create image from SVG
             const img = new Image();
             img.crossOrigin = "anonymous";
             const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
@@ -186,31 +203,45 @@ export async function exportDashboardToPdf(options: PdfExportOptions): Promise<v
               img.src = url;
             });
             
-            // Get chart title from the card
-            const titleEl = chartElement.querySelector("[class*='CardTitle']");
-            const title = titleEl?.textContent || "";
-            
-            // Add title above chart in PDF
-            if (title) {
-              doc.setFontSize(10);
-              doc.setFont("helvetica", "bold");
-              doc.setTextColor(255, 255, 255);
-              doc.text(title.split("(")[0].trim(), margin, yPosition);
-              yPosition += 5;
-            }
-            
-            const imgData = canvas.toDataURL("image/png");
-            const imgWidth = pageWidth - (margin * 2);
-            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            // Get chart info
+            const chartKeys = Object.keys(chartTitles);
+            const chartKey = chartKeys[chartIndex] || "unknown";
+            const chartInfo = chartTitles[chartKey] || { title: titleEl?.textContent || "", xAxis: "", yAxis: "" };
             
             // Check if we need a new page
-            if (yPosition + imgHeight > pageHeight - margin) {
+            const imgWidth = pageWidth - (margin * 2);
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            const totalChartHeight = imgHeight + 18; // title + chart + axis labels
+            
+            if (yPosition + totalChartHeight > pageHeight - margin) {
               doc.addPage();
               yPosition = margin;
             }
             
+            // Draw chart title with background
+            doc.setFillColor(30, 41, 59); // slate-800
+            doc.roundedRect(margin, yPosition, imgWidth, 10, 1, 1, "F");
+            doc.setFontSize(9);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(255, 255, 255);
+            doc.text(chartInfo.title, margin + 4, yPosition + 7);
+            yPosition += 12;
+            
+            // Draw chart image
+            const imgData = canvas.toDataURL("image/png");
             doc.addImage(imgData, "PNG", margin, yPosition, imgWidth, imgHeight);
-            yPosition += imgHeight + 10;
+            yPosition += imgHeight;
+            
+            // Draw X axis label
+            if (chartInfo.xAxis) {
+              doc.setFontSize(7);
+              doc.setTextColor(148, 163, 184);
+              doc.setFont("helvetica", "normal");
+              doc.text(chartInfo.xAxis, pageWidth / 2, yPosition + 5, { align: "center" });
+            }
+            
+            yPosition += 10;
+            chartIndex++;
           }
         }
       } catch (error) {
@@ -506,6 +537,63 @@ function drawComisionSummaryBox(
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat("es-CO").format(value);
+}
+
+function drawKPICards(
+  doc: jsPDF,
+  kpis: KPIData,
+  margin: number,
+  startY: number,
+  pageWidth: number
+): number {
+  const boxWidth = pageWidth - margin * 2;
+  const cardHeight = 24;
+  const cardWidth = (boxWidth - 8) / 3; // 3 cards per row with gaps
+  
+  const kpiData = [
+    { label: "Volumen de Ventas", value: formatCurrency(kpis.volumenVentas), color: [59, 130, 246] }, // blue
+    { label: "N° Transacciones", value: formatNumber(kpis.numTransacciones), color: [34, 197, 94] }, // green
+    { label: "Ticket Promedio", value: formatCurrency(kpis.ticketPromedio), color: [168, 85, 247] }, // purple
+    { label: "Comision (2%)", value: formatCurrency(kpis.comisionAcumulada), color: [249, 115, 22] }, // orange
+    { label: "Tarjetas Unicas", value: formatNumber(kpis.tarjetasUnicas), color: [236, 72, 153] }, // pink
+    { label: "Datafonos Unicos", value: formatNumber(kpis.datafonosUnicos), color: [59, 130, 246] }, // blue
+  ];
+
+  let currentY = startY;
+  let currentX = margin;
+  
+  kpiData.forEach((kpi, index) => {
+    // Start new row after 3 cards
+    if (index > 0 && index % 3 === 0) {
+      currentY += cardHeight + 4;
+      currentX = margin;
+    }
+    
+    // Card background
+    doc.setFillColor(30, 41, 59); // slate-800
+    doc.setDrawColor(51, 65, 85); // slate-700
+    doc.roundedRect(currentX, currentY, cardWidth, cardHeight, 2, 2, "FD");
+    
+    // Accent bar on left
+    doc.setFillColor(kpi.color[0], kpi.color[1], kpi.color[2]);
+    doc.rect(currentX, currentY + 2, 2, cardHeight - 4, "F");
+    
+    // Label
+    doc.setFontSize(6);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(148, 163, 184); // slate-400
+    doc.text(kpi.label.toUpperCase(), currentX + 6, currentY + 8);
+    
+    // Value
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(255, 255, 255);
+    doc.text(kpi.value, currentX + 6, currentY + 18);
+    
+    currentX += cardWidth + 4;
+  });
+
+  return currentY + cardHeight;
 }
 
 function addComisionBreakdownTable(
